@@ -8,7 +8,7 @@ from fast_flights import FlightQuery, Passengers, create_query, get_flights
 query = create_query(
     flights=[
         FlightQuery(
-            date="2026-02-16",
+            date="2026-03-15",
             from_airport="MYJ",
             to_airport="TPE",
         ),

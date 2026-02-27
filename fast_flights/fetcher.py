@@ -97,7 +97,7 @@ def fetch_flights_html(
     """
     if integration is None:
         client = Client(
-            impersonate="chrome_145",
+            impersonate="chrome_127",
             impersonate_os="macos",
             referer=True,
             proxy=proxy,
@@ -110,7 +110,13 @@ def fetch_flights_html(
         else:
             params = {"q": q}
 
-        res = client.get(URL, params=params)
+        res = client.get(
+            URL, 
+            params=params, 
+            headers={
+                "cookie": "CONSENT=YES+cb.20230810-00-p0.en+FX+874; SOCS=CAISHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
+            }
+        )
         return res.text
 
     else:
