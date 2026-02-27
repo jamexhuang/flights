@@ -69,6 +69,38 @@ Each outbound result carries an internal session token (`select_token`) that lin
 
 > **Note:** This also works with integrations (e.g. `get_return_flights(rq, integration=BrightData())`).
 
+## Multi-city (N legs)
+For multi-city/multi-leg trips, chain `select_flight()` calls to step through each leg:
+
+```python
+query = create_query(
+    flights=[
+        FlightQuery(date="2026-03-15", from_airport="SIN", to_airport="TPE"),
+        FlightQuery(date="2026-03-21", from_airport="TPE", to_airport="NRT"),
+        FlightQuery(date="2026-03-24", from_airport="NRT", to_airport="TPE"),
+        FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
+    ],
+    seat="economy",
+    trip="multi-city",
+    passengers=Passengers(adults=1),
+)
+
+# Leg 1
+leg1 = get_flights(query)
+rq = select_flight(query, leg1[0])
+
+# Leg 2
+leg2 = get_return_flights(rq)
+rq = select_flight(rq, leg2[0])       # pass ReturnQuery to chain
+
+# Leg 3
+leg3 = get_return_flights(rq)
+rq = select_flight(rq, leg3[0])
+
+# Leg 4
+leg4 = get_return_flights(rq)
+```
+
 ## Integrations
 If you'd like, you can use integrations.
 
@@ -82,7 +114,7 @@ get_flights(..., integration=BrightData())
 ```
 
 ## What's new
-- `v3.1.0` – **Round-trip return flights** support via `select_flight()` + `get_return_flights()`.
+- `v3.1.0` – **Round-trip return flights** and **multi-city (N-leg)** support via `select_flight()` + `get_return_flights()`.
 - `v3.0rc0` – Uses Javascript data instead.
 - `v2.2` – Now supports **local playwright** for sending requests.
 - `v2.0` – New (much more succinct) API, fallback support for Playwright serverless functions, and [documentation](https://aweirddev.github.io/flights)!

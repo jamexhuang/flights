@@ -1,6 +1,6 @@
 # fast-flights v3.1.0 — Migration & Usage Guide
 
-This guide covers how to migrate from the upstream `fast-flights` PyPI package to the fork, and documents all available features including **one-way search**, **max stops**, **round-trip with return flights**, and **integrations**.
+This guide covers how to migrate from the upstream `fast-flights` PyPI package to the fork, and documents all available features including **one-way search**, **max stops**, **round-trip with return flights**, **multi-city (N-leg)**, and **integrations**.
 
 ---
 
@@ -45,6 +45,7 @@ dependencies = [
 | Airline filter | ✅ Unchanged |
 | Integrations (BrightData) | ✅ Unchanged |
 | **Round-trip return flights** | 🆕 **New** |
+| **Multi-city (N-leg)** | 🆕 **New** |
 
 > **Backward compatible** — All existing code works without changes. The new return-flight feature is opt-in.
 
@@ -197,7 +198,46 @@ Calling `select_flight()` on a flight without a token raises `ValueError`.
 
 ---
 
-### 5. Integrations
+### 5. Multi-city (N legs) 🆕
+
+For trips with 3+ legs (e.g. SIN → TPE → NRT → TPE → SIN), use `trip="multi-city"` and chain `select_flight()` calls:
+
+```python
+query = create_query(
+    flights=[
+        FlightQuery(date="2026-03-15", from_airport="SIN", to_airport="TPE"),
+        FlightQuery(date="2026-03-21", from_airport="TPE", to_airport="NRT"),
+        FlightQuery(date="2026-03-24", from_airport="NRT", to_airport="TPE"),
+        FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
+    ],
+    seat="economy",
+    trip="multi-city",
+    passengers=Passengers(adults=1),
+    currency="EUR",
+)
+
+# Leg 1: SIN → TPE
+leg1 = get_flights(query)
+rq = select_flight(query, leg1[0])
+
+# Leg 2: TPE → NRT
+leg2 = get_return_flights(rq)
+rq = select_flight(rq, leg2[0])       # pass ReturnQuery to chain
+
+# Leg 3: NRT → TPE
+leg3 = get_return_flights(rq)
+rq = select_flight(rq, leg3[0])
+
+# Leg 4 (final): TPE → SIN
+leg4 = get_return_flights(rq)
+print(f"Final leg options: {len(leg4)}")
+```
+
+> **Key:** pass the `ReturnQuery` from the previous step into `select_flight()` to chain legs together.
+
+---
+
+### 6. Integrations
 
 All query types (including return flights) work with integrations.
 
@@ -251,7 +291,9 @@ results = get_flights(query, proxy="http://user:pass@proxy:8080")
 
 ---
 
-## Full example
+## Full examples
+
+### Round-trip
 
 ```python
 from fast_flights import (
@@ -259,7 +301,6 @@ from fast_flights import (
     get_flights, select_flight, get_return_flights,
 )
 
-# Round-trip: Paris ↔ Taipei
 query = create_query(
     flights=[
         FlightQuery(date="2026-03-15", from_airport="CDG", to_airport="TPE", max_stops=1),
@@ -267,24 +308,40 @@ query = create_query(
     ],
     seat="economy",
     trip="round-trip",
-    passengers=Passengers(adults=1, children=0, infants_in_seat=0, infants_on_lap=0),
+    passengers=Passengers(adults=1),
     currency="EUR",
-    language="en-US",
 )
 
-# Outbound
 outbound = get_flights(query)
-print("=== Outbound ===")
 for f in outbound[:3]:
-    stops = len(f.flights) - 1
-    print(f"  {f.airlines} | {f.flights[0].duration}min | {stops} stop(s) | €{f.price}")
+    print(f"→ {f.airlines} | €{f.price}")
 
-# Return
 if outbound and outbound[0].select_token:
     rq = select_flight(query, outbound[0])
     returning = get_return_flights(rq)
-    print("=== Return ===")
     for f in returning[:3]:
-        stops = len(f.flights) - 1
-        print(f"  {f.airlines} | {f.flights[0].duration}min | {stops} stop(s) | €{f.price}")
+        print(f"← {f.airlines} | €{f.price}")
 ```
+
+### Multi-city (loop pattern)
+
+```python
+legs = []
+current_query = query  # multi-city query
+
+# First leg
+results = get_flights(current_query)
+legs.append(results)
+
+# Remaining legs
+for i in range(len(query.flight_data) - 1):
+    rq = select_flight(current_query, legs[-1][0])
+    results = get_return_flights(rq)
+    legs.append(results)
+    current_query = rq
+
+# legs[0] = leg 1 options, legs[1] = leg 2 options, etc.
+for i, leg in enumerate(legs):
+    print(f"Leg {i+1}: {len(leg)} options, best price: €{leg[0].price}")
+```
+

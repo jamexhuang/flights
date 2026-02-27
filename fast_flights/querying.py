@@ -221,17 +221,18 @@ def _build_tfu(token: str) -> str:
     return b64encode(payload).decode("utf-8")
 
 
-def select_flight(query: Query, flight: "Flights") -> ReturnQuery:
-    """Build a :class:`ReturnQuery` for fetching return-flight options.
+def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuery:
+    """Build a :class:`ReturnQuery` for fetching the next leg's options.
 
-    After calling :func:`get_flights` on a round-trip query you receive a
-    list of outbound flights, each carrying a ``select_token``.  Pass the
-    original *query* together with the chosen *flight* to this function to
-    obtain a :class:`ReturnQuery` that can be fed to
-    :func:`~fast_flights.fetcher.get_return_flights`.
+    Works for both **round-trip** (2 legs) and **multi-city** (N legs).
+
+    * For the first selection, pass the original :class:`Query`.
+    * For subsequent legs, pass the :class:`ReturnQuery` from the
+      previous step — this chains the selections together.
 
     Args:
-        query: The original round-trip query.
+        query: The original query (:class:`Query`) or the result of a
+            previous ``select_flight()`` call (:class:`ReturnQuery`).
         flight: A :class:`~fast_flights.model.Flights` result with a valid
             ``select_token``.
 
@@ -243,9 +244,14 @@ def select_flight(query: Query, flight: "Flights") -> ReturnQuery:
     if not flight.select_token:
         raise ValueError(
             "The selected flight has no select_token. "
-            "Make sure you are using a round-trip query and the "
-            "parser extracted the token correctly."
+            "Make sure you are using a round-trip or multi-city query and "
+            "the parser extracted the token correctly."
         )
 
     tfu = _build_tfu(flight.select_token)
-    return ReturnQuery(base=query, tfu=tfu)
+
+    if isinstance(query, ReturnQuery):
+        # Chain: keep the same base Query, just update the tfu token
+        return ReturnQuery(base=query.base, tfu=tfu)
+    else:
+        return ReturnQuery(base=query, tfu=tfu)
