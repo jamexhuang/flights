@@ -163,30 +163,32 @@ def get_flights_multicity(
     currency: str = "",
     proxy: str | None = None,
     integration: Integration | None = None,
-    selector: "Callable[[MulticityLeg], Flights] | None" = None,
     delay: float = 1.0,
 ) -> list[MulticityLeg]:
-    """Search a multi-city itinerary by chaining round-trip queries.
+    """Search a multi-city itinerary using independent one-way queries.
 
-    Google Flights does not server-side render multi-city results, so the
-    standard ``get_flights()`` returns empty data for ``trip="multi-city"``
-    when using the default primp (HTTP-only) client.
+    Google Flights does not server-side render multi-city or return-flight
+    results, so neither ``trip="multi-city"`` nor the ``tfu``-based
+    chaining approach works via the default primp (HTTP-only) client.
 
-    This function works around the limitation by running sequential
-    round-trip / return queries, chaining each leg via
-    :func:`select_flight`.
+    This function works around the limitation by running **one independent
+    one-way query per leg**, which Google *does* server-side render.
+
+    .. note::
+
+       Because each leg is an independent one-way query, the prices shown
+       are **per-leg one-way prices**, not the bundled "entire trip" price
+       that Google shows in a multi-city search.  Sum the per-leg cheapest
+       prices for an approximate total.
 
     Args:
         flights: List of :class:`FlightQuery`, one per leg (2–10 legs).
         seat: Seat class.
-        passengers: Passenger counts. Defaults to 1 adult.
+        passengers: Passenger counts.  Defaults to 1 adult.
         language: Language code (e.g. ``"en"``).
         currency: Currency code (e.g. ``"EUR"``).
         proxy: Optional proxy string.
         integration: Optional :class:`Integration` for the HTTP fetch.
-        selector: A callable that receives a :class:`MulticityLeg` and
-            returns the :class:`Flights` to select for that leg.
-            If ``None``, the first result is selected automatically.
         delay: Seconds to wait between fetches (default 1.0).
 
     Returns:
@@ -214,10 +216,8 @@ def get_flights_multicity(
     import time as _time
 
     from .querying import (
-        FlightQuery as _FQ,
         Passengers as _P,
         create_query as _cq,
-        select_flight as _sel,
     )
 
     if passengers is None:
@@ -228,54 +228,28 @@ def get_flights_multicity(
 
     all_legs: list[MulticityLeg] = []
 
-    # ── Leg 0 (first leg): use round-trip with legs[0] and legs[1] ──
-    query = _cq(
-        flights=[flights[0], flights[1]],
-        trip="round-trip",
-        seat=seat,
-        passengers=passengers,
-        language=language,
-        currency=currency,
-    )
-    results = get_flights(query, proxy=proxy, integration=integration)
-    leg0 = MulticityLeg(
-        leg_index=0,
-        from_airport=flights[0].from_airport,
-        to_airport=flights[0].to_airport,
-        date=flights[0].date if isinstance(flights[0].date, str) else flights[0].date.strftime("%Y-%m-%d"),
-        results=results,
-    )
-    all_legs.append(leg0)
-
-    if not results:
-        return all_legs  # no results for leg 0
-
-    # Select flight for leg 0
-    pick = selector(leg0) if selector else results[0]
-    current_q = _sel(query, pick)
-
-    # ── Legs 1..N-1: chain via select_flight + get_return_flights ──
-    for i in range(1, len(flights)):
-        if delay > 0:
+    for i, fq in enumerate(flights):
+        if i > 0 and delay > 0:
             _time.sleep(delay)
 
-        results = get_return_flights(current_q, proxy=proxy, integration=integration)
+        query = _cq(
+            flights=[fq],
+            trip="one-way",
+            seat=seat,
+            passengers=passengers,
+            language=language,
+            currency=currency,
+        )
+        results = get_flights(query, proxy=proxy, integration=integration)
         leg = MulticityLeg(
             leg_index=i,
-            from_airport=flights[i].from_airport,
-            to_airport=flights[i].to_airport,
-            date=flights[i].date if isinstance(flights[i].date, str) else flights[i].date.strftime("%Y-%m-%d"),
+            from_airport=fq.from_airport,
+            to_airport=fq.to_airport,
+            date=fq.date if isinstance(fq.date, str) else fq.date.strftime("%Y-%m-%d"),
             results=results,
         )
         all_legs.append(leg)
 
-        if not results:
-            break  # no results for this leg
-
-        # Select flight for this leg (needed for subsequent legs)
-        if i < len(flights) - 1:
-            pick = selector(leg) if selector else results[0]
-            current_q = _sel(current_q, pick)
-
     return all_legs
+
 
