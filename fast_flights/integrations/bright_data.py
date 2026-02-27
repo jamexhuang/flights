@@ -5,7 +5,7 @@ from primp import Client
 from typing_extensions import Final, override
 
 from ..fetcher import URL
-from ..querying import Query
+from ..querying import Query, ReturnQuery
 from .base import Integration, get_env
 
 DEFAULT_API_URL = "https://api.brightdata.com/request"
@@ -35,7 +35,7 @@ class BrightData(Integration):
         )
 
     @override
-    def fetch_html(self, q: Query | str, /) -> str:
+    def fetch_html(self, q: Query | ReturnQuery | str, /) -> str:
         if isinstance(q, str):
             res = self.client.post(
                 self.api_url, json={"url": URL + "?q=" + q, "zone": self.zone}

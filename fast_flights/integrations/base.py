@@ -1,7 +1,7 @@
 import os
 from abc import ABC
 
-from ..querying import Query
+from ..querying import Query, ReturnQuery
 
 try:
     import dotenv  # pip install python-dotenv
@@ -15,11 +15,12 @@ except ModuleNotFoundError:
 class Integration(ABC):
     """Represents an integration."""
 
-    def fetch_html(self, q: Query | str, /) -> str:
+    def fetch_html(self, q: Query | ReturnQuery | str, /) -> str:
         """Fetch the flights page HTML from a query.
 
         Args:
-            q: The query.
+            q: The query.  Can be a :class:`Query`, :class:`ReturnQuery`,
+                or a plain string.
         """
         raise NotImplementedError
 
