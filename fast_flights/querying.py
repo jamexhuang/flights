@@ -159,3 +159,93 @@ def create_query(
         language=language,
         currency=currency,
     )
+
+
+@dataclass
+class ReturnQuery:
+    """A query for fetching return flights after selecting an outbound flight.
+
+    Wraps the original :class:`Query` with the ``tfu`` session token
+    extracted from a selected :class:`~fast_flights.model.Flights` result.
+    """
+
+    base: Query
+    tfu: str
+
+    def params(self) -> dict[str, str]:
+        """Create `params` in dictionary form, including the ``tfu`` key."""
+        p = self.base.params()
+        p["tfu"] = self.tfu
+        return p
+
+    def url(self) -> str:
+        """Get the URL for this return-flight query."""
+        return self.base.url() + "&tfu=" + self.tfu
+
+    def __repr__(self) -> str:
+        return "ReturnQuery(...)"
+
+
+def _build_tfu(token: str) -> str:
+    """Wrap a session token in the protobuf envelope expected by the ``tfu``
+    URL parameter and return it as a Base64 string.
+
+    Wire format::
+
+        Field 1 (LEN): <token>
+        Field 2 (LEN): { Field 1 (VARINT): 0 }
+        Field 4 (LEN): ""
+    """
+    import struct
+
+    def _encode_varint(value: int) -> bytes:
+        parts = []
+        while value > 0x7F:
+            parts.append((value & 0x7F) | 0x80)
+            value >>= 7
+        parts.append(value & 0x7F)
+        return bytes(parts)
+
+    def _encode_len(field_number: int, data: bytes) -> bytes:
+        tag = _encode_varint((field_number << 3) | 2)
+        length = _encode_varint(len(data))
+        return tag + length + data
+
+    token_bytes = token.encode("utf-8")
+    field2_inner = _encode_varint((1 << 3) | 0) + _encode_varint(0)  # Field 1 varint 0
+    payload = (
+        _encode_len(1, token_bytes)
+        + _encode_len(2, field2_inner)
+        + _encode_len(4, b"")
+    )
+    return b64encode(payload).decode("utf-8")
+
+
+def select_flight(query: Query, flight: "Flights") -> ReturnQuery:
+    """Build a :class:`ReturnQuery` for fetching return-flight options.
+
+    After calling :func:`get_flights` on a round-trip query you receive a
+    list of outbound flights, each carrying a ``select_token``.  Pass the
+    original *query* together with the chosen *flight* to this function to
+    obtain a :class:`ReturnQuery` that can be fed to
+    :func:`~fast_flights.fetcher.get_return_flights`.
+
+    Args:
+        query: The original round-trip query.
+        flight: A :class:`~fast_flights.model.Flights` result with a valid
+            ``select_token``.
+
+    Raises:
+        ValueError: If the flight has no ``select_token``.
+    """
+    from .model import Flights  # avoid circular import at module level
+
+    if not flight.select_token:
+        raise ValueError(
+            "The selected flight has no select_token. "
+            "Make sure you are using a round-trip query and the "
+            "parser extracted the token correctly."
+        )
+
+    tfu = _build_tfu(flight.select_token)
+    return ReturnQuery(base=query, tfu=tfu)

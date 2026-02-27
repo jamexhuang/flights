@@ -4,7 +4,7 @@ from primp import Client
 
 from .integrations.base import Integration
 from .parser import MetaList, parse
-from .querying import Query
+from .querying import Query, ReturnQuery
 
 URL = "https://www.google.com/travel/flights"
 
@@ -61,8 +61,29 @@ def get_flights(
     return parse(html)
 
 
+def get_return_flights(
+    q: ReturnQuery,
+    /,
+    *,
+    proxy: str | None = None,
+    integration: Integration | None = None,
+) -> MetaList:
+    """Get return flights after selecting an outbound flight.
+
+    Use :func:`~fast_flights.querying.select_flight` to build a
+    :class:`ReturnQuery` from the original query and a chosen outbound
+    flight, then pass it here to retrieve the available return options.
+
+    Args:
+        q: A :class:`ReturnQuery` created by :func:`select_flight`.
+        proxy (str, optional): Proxy.
+    """
+    html = fetch_flights_html(q, proxy=proxy, integration=integration)
+    return parse(html)
+
+
 def fetch_flights_html(
-    q: Query | str,
+    q: Query | ReturnQuery | str,
     /,
     *,
     proxy: str | None = None,
@@ -83,7 +104,7 @@ def fetch_flights_html(
             cookie_store=True,
         )
 
-        if isinstance(q, Query):
+        if isinstance(q, (Query, ReturnQuery)):
             params = q.params()
 
         else:

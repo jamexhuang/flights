@@ -31,8 +31,6 @@ def parse(html: str) -> MetaList:
 # Data discovery by @kftang, huge shout out!
 def parse_js(js: str):
     data = js.split("data:", 1)[1].rsplit(",", 1)[0]
-    print(data)
-
     payload = json.loads(data)
 
     alliances = []
@@ -58,6 +56,20 @@ def parse_js(js: str):
     for k in payload[3][0]:
         flight = k[0]
         price = k[1][0][1]
+
+        # Extract return-flight selection data (round-trip / multi-city)
+        select_token = None
+        select_data = None
+        try:
+            if k[1] and len(k[1]) > 1 and isinstance(k[1][1], str):
+                select_token = k[1][1]
+        except (IndexError, TypeError):
+            pass
+        try:
+            if len(k) > 8 and isinstance(k[8], str):
+                select_data = k[8]
+        except (IndexError, TypeError):
+            pass
 
         typ = flight[0]
         airlines = flight[1]
@@ -105,6 +117,8 @@ def parse_js(js: str):
                 carbon=CarbonEmission(
                     typical_on_route=typical_carbon_emission, emission=carbon_emission
                 ),
+                select_token=select_token,
+                select_data=select_data,
             )
         )
 

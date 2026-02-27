@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Annotated, Literal, Union
+from dataclasses import dataclass, field
+from typing import Annotated, Literal, Optional, Union
 
 
 @dataclass
@@ -55,3 +55,9 @@ class Flights:
     airlines: list[str]
     flights: list[SingleFlight]
     carbon: CarbonEmission
+    select_token: Optional[str] = field(default=None, repr=False)
+    """Session token from ds:1 data (f[1][1]) used for the ``tfu`` URL
+    parameter when querying return flights in a round-trip search."""
+    select_data: Optional[str] = field(default=None, repr=False)
+    """Encoded selected-flight data from ds:1 (f[8]) used for the ``tfs``
+    URL parameter when querying return flights."""
