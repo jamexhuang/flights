@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✈️ fast-flights (v3.0rc1)
+# ✈️ fast-flights (v3.1.0)
 
 The fast and strongly-typed Google Flights scraper (API) implemented in Python.
 Based on Base64-encoded Protobuf string.
@@ -38,6 +38,37 @@ query = create_query(
 res = get_flights(query)
 ```
 
+## Round-trip (return flights)
+For round-trip searches, Google Flights uses a two-step flow: first you query outbound flights, then you select one and query return flights. `fast-flights` now supports this:
+
+```python
+from fast_flights import (
+    FlightQuery, Passengers,
+    create_query, get_flights,
+    select_flight, get_return_flights, # new!
+)
+
+# Step 1 – query outbound flights
+query = create_query(
+    flights=[
+        FlightQuery(date="2026-03-15", from_airport="CDG", to_airport="TPE"),
+        FlightQuery(date="2026-03-19", from_airport="TPE", to_airport="CDG"),
+    ],
+    seat="economy",
+    trip="round-trip",
+    passengers=Passengers(adults=1),
+)
+outbound = get_flights(query)
+
+# Step 2 – pick a flight, then query return flights
+return_query = select_flight(query, outbound[0])
+returning = get_return_flights(return_query)
+```
+
+Each outbound result carries an internal session token (`select_token`) that links to the available return options. The `select_flight()` helper wraps it into a `ReturnQuery` that `get_return_flights()` can consume.
+
+> **Note:** This also works with integrations (e.g. `get_return_flights(rq, integration=BrightData())`).
+
 ## Integrations
 If you'd like, you can use integrations.
 
@@ -51,9 +82,10 @@ get_flights(..., integration=BrightData())
 ```
 
 ## What's new
+- `v3.1.0` – **Round-trip return flights** support via `select_flight()` + `get_return_flights()`.
+- `v3.0rc0` – Uses Javascript data instead.
+- `v2.2` – Now supports **local playwright** for sending requests.
 - `v2.0` – New (much more succinct) API, fallback support for Playwright serverless functions, and [documentation](https://aweirddev.github.io/flights)!
-- `v2.2` - Now supports **local playwright** for sending requests.
-- `v3.0rc0` - Uses Javascript data instead.
 
 ## Contributing
 Contributing is welcomed! A few notes though:
