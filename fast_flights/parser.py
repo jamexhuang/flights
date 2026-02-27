@@ -36,91 +36,97 @@ def parse_js(js: str):
     alliances = []
     airlines = []
 
-    (alliances_data, airlines_data) = (
-        payload[7][1][0],
-        payload[7][1][1],
-    )
-
-    for code, name in alliances_data:
-        alliances.append(Alliance(code=code, name=name))
-
-    for code, name in airlines_data:
-        airlines.append(Airline(code=code, name=name))
+    try:
+        (alliances_data, airlines_data) = (
+            payload[7][1][0],
+            payload[7][1][1],
+        )
+        for code, name in alliances_data:
+            alliances.append(Alliance(code=code, name=name))
+        for code, name in airlines_data:
+            airlines.append(Airline(code=code, name=name))
+    except (IndexError, TypeError, KeyError):
+        pass  # metadata is optional; flights can still be parsed
 
     meta = JsMetadata(alliances=alliances, airlines=airlines)
 
     flights = MetaList()
-    if payload[3][0] is None:
+    if payload[3] is None or payload[3][0] is None:
+        flights.metadata = meta
         return flights
 
     for k in payload[3][0]:
-        flight = k[0]
-        price = k[1][0][1]
-
-        # Extract return-flight selection data (round-trip / multi-city)
-        select_token = None
-        select_data = None
         try:
-            if k[1] and len(k[1]) > 1 and isinstance(k[1][1], str):
-                select_token = k[1][1]
-        except (IndexError, TypeError):
-            pass
-        try:
-            if len(k) > 8 and isinstance(k[8], str):
-                select_data = k[8]
-        except (IndexError, TypeError):
-            pass
+            flight = k[0]
+            price = k[1][0][1]
 
-        typ = flight[0]
-        airlines = flight[1]
+            # Extract return-flight selection data (round-trip / multi-city)
+            select_token = None
+            select_data = None
+            try:
+                if k[1] and len(k[1]) > 1 and isinstance(k[1][1], str):
+                    select_token = k[1][1]
+            except (IndexError, TypeError):
+                pass
+            try:
+                if len(k) > 8 and isinstance(k[8], str):
+                    select_data = k[8]
+            except (IndexError, TypeError):
+                pass
 
-        sg_flights = []
+            typ = flight[0]
+            airlines = flight[1]
 
-        # multiple flights!
-        for single_flight in flight[2]:
-            from_airport = Airport(code=single_flight[3], name=single_flight[4])
-            to_airport = Airport(code=single_flight[6], name=single_flight[5])
-            departure_time = single_flight[8]
-            departure_date = single_flight[20]
-            departure = SimpleDatetime(date=departure_date, time=departure_time)
+            sg_flights = []
 
-            arrival_time = single_flight[10]
-            arrival_date = single_flight[21]
-            arrival = SimpleDatetime(date=arrival_date, time=arrival_time)
+            # multiple flights!
+            for single_flight in flight[2]:
+                from_airport = Airport(code=single_flight[3], name=single_flight[4])
+                to_airport = Airport(code=single_flight[6], name=single_flight[5])
+                departure_time = single_flight[8]
+                departure_date = single_flight[20]
+                departure = SimpleDatetime(date=departure_date, time=departure_time)
 
-            plane_type = single_flight[17]
+                arrival_time = single_flight[10]
+                arrival_date = single_flight[21]
+                arrival = SimpleDatetime(date=arrival_date, time=arrival_time)
 
-            duration = single_flight[11]
+                plane_type = single_flight[17]
 
-            sg_flights.append(
-                SingleFlight(
-                    from_airport=from_airport,
-                    to_airport=to_airport,
-                    departure=departure,
-                    arrival=arrival,
-                    duration=duration,
-                    plane_type=plane_type,
+                duration = single_flight[11]
+
+                sg_flights.append(
+                    SingleFlight(
+                        from_airport=from_airport,
+                        to_airport=to_airport,
+                        departure=departure,
+                        arrival=arrival,
+                        duration=duration,
+                        plane_type=plane_type,
+                    )
+                )
+
+            # some additional data
+            extras = flight[22]
+            carbon_emission = extras[7]
+            typical_carbon_emission = extras[8]
+
+            flights.append(
+                Flights(
+                    type=typ,
+                    price=price,
+                    airlines=airlines,
+                    flights=sg_flights,
+                    carbon=CarbonEmission(
+                        typical_on_route=typical_carbon_emission, emission=carbon_emission
+                    ),
+                    select_token=select_token,
+                    select_data=select_data,
                 )
             )
-
-        # some additional data
-        extras = flight[22]
-        carbon_emission = extras[7]
-        typical_carbon_emission = extras[8]
-
-        flights.append(
-            Flights(
-                type=typ,
-                price=price,
-                airlines=airlines,
-                flights=sg_flights,
-                carbon=CarbonEmission(
-                    typical_on_route=typical_carbon_emission, emission=carbon_emission
-                ),
-                select_token=select_token,
-                select_data=select_data,
-            )
-        )
+        except (IndexError, TypeError, KeyError):
+            # Skip malformed flight entries
+            continue
 
     flights.metadata = meta
     return flights
