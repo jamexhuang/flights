@@ -13,8 +13,10 @@ from .fetcher import (
     get_flights,
     get_return_flights,
     get_flights_multicity,
+    get_flights_multicity_chained,
     fetch_flights_html,
     MulticityLeg,
+    MulticityLegChained,
 )
 
 __all__ = [
@@ -28,8 +30,10 @@ __all__ = [
     "get_flights",
     "get_return_flights",
     "get_flights_multicity",
+    "get_flights_multicity_chained",
     "fetch_flights_html",
     "MulticityLeg",
+    "MulticityLegChained",
     "integrations",
 ]
 

@@ -22,6 +22,15 @@ theme:
   features:
     - content.code.copy
     - content.code.annotate
+nav:
+  - Get started: index.md
+  - Airports: airports.md
+  - Filters: filters.md
+  - Return flights: return-flights.md
+  - Multi-city: multicity.md
+  - Fallbacks: fallbacks.md
+  - Local playwright: local.md
+  - Migration guide: migration-guide.md
 plugins:
   - search
   - offline
