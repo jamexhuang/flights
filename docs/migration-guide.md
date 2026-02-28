@@ -1,4 +1,4 @@
-# fast-flights v3.1.0 — Migration & Usage Guide
+# fast-flights v3.4.0 — Migration & Usage Guide
 
 This guide covers how to migrate from the upstream `fast-flights` PyPI package to the fork, and documents all available features including **one-way search**, **max stops**, **round-trip with return flights**, **multi-city (N-leg)**, and **integrations**.
 
@@ -36,7 +36,7 @@ dependencies = [
 ]
 ```
 
-### What's new in v3.1.0
+### What's new in v3.4.0
 
 | Feature | Status |
 |---------|--------|
@@ -44,8 +44,9 @@ dependencies = [
 | Max stops filter | ✅ Unchanged |
 | Airline filter | ✅ Unchanged |
 | Integrations (BrightData) | ✅ Unchanged |
-| **Round-trip return flights** | 🆕 **New** |
-| **Multi-city (N-leg)** | 🆕 **New** |
+| **Round-trip return flights** | 🆕 **New (3.1.0)** |
+| **Multi-city manual chaining** | 🆕 **New (3.1.0)** |
+| **Automated multi-city chaining** | 🆕 **New (3.4.0)** |
 
 > **Backward compatible** — All existing code works without changes. The new return-flight feature is opt-in.
 
@@ -63,6 +64,7 @@ from fast_flights import (
     get_flights,        # fetch flight results
     select_flight,      # 🆕 select outbound → build ReturnQuery
     get_return_flights,  # 🆕 fetch return flight results
+    get_flights_multicity_chained, # 🆕 (v3.4.0) automated multi-city tracker
 )
 ```
 
@@ -200,7 +202,28 @@ Calling `select_flight()` on a flight without a token raises `ValueError`.
 
 ### 5. Multi-city (N legs) 🆕
 
-For trips with 3+ legs (e.g. SIN → TPE → NRT → TPE → SIN), use `trip="multi-city"` and chain `select_flight()` calls:
+For trips with 3+ legs (e.g. SIN → TPE → NRT → TPE → SIN), you have two options.
+
+#### Option A: Automated Multi-city Chaining (v3.4.0 Recommended)
+The easiest way is using `get_flights_multicity_chained` which automatically sequentially queries the Google frontend to get realistic multi-leg continuity prices.
+
+```python
+from fast_flights import get_flights_multicity_chained
+
+query_legs = [
+    FlightQuery(date="2026-03-15", from_airport="SIN", to_airport="TPE"),
+    FlightQuery(date="2026-03-21", from_airport="TPE", to_airport="NRT"),
+    FlightQuery(date="2026-03-24", from_airport="NRT", to_airport="TPE"),
+    FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
+]
+
+# This automatically fetches the "best" token step-by-step
+results = get_flights_multicity_chained(query_legs, delay=1.0)
+print(f"Total chained price: {results[-1].total_price}")
+```
+
+#### Option B: Manual Chaining
+Use `trip="multi-city"` and chain `select_flight()` calls manually if you need complete granular control over integrations or sub-selection:
 
 ```python
 query = create_query(
@@ -239,7 +262,10 @@ print(f"Final leg options: {len(leg4)}")
 
 ### 6. Integrations
 
-All query types (including return flights) work with integrations.
+All query types (including return flights) work with integrations. 
+
+> ⚠️ **Warning on Multi-city Chaining:** 
+> The new `get_flights_multicity_chained` function (Option A) maintains an implicit HTTP session with `primp` to track Google context tokens. Therefore, it **does not support** passing `BrightData` or `Playwright` integration overrides. If you must use residential proxies, you must perform Option B (Manual Chaining) yourself.
 
 #### Bright Data
 
