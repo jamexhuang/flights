@@ -55,15 +55,6 @@ def _extract_flight_tokens(raw_response_text: str) -> list[str]:
     unique.sort(key=lambda x: ("----" in x or "AAAA" in x), reverse=True)
     return unique
 
-def _extract_price(raw_response_text: str, currency: str) -> int | None:
-    prices = re.findall(rf'\\"{currency}\\",([\d]+)', raw_response_text)
-    if not prices:
-        prices = re.findall(r'\\"USD\\",([\d]+)', raw_response_text)
-    
-    if prices:
-        return int(prices[0])
-    return None
-
 def _extract_full_flights_list(raw_response_text: str) -> 'MetaList | None':
     chunks = raw_response_text.split('wrb.fr",null,"')
     if len(chunks) < 2:
@@ -105,7 +96,10 @@ def fetch_shopping_results(
         
     content = res.text
     tokens_found = _extract_flight_tokens(content)
-    price_found = _extract_price(content, currency)
     flights_found = _extract_full_flights_list(content)
+    
+    price_found = None
+    if flights_found and len(flights_found) > 0:
+        price_found = flights_found[0].price
     
     return tokens_found, price_found, content, flights_found
