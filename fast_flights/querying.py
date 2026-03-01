@@ -17,6 +17,7 @@ class Query:
     passengers: list[Passenger]
     language: str
     currency: str
+    _flights: list['FlightQuery'] | None = None
 
     def pb(self) -> Info:
         """(internal) Protobuf data. (`Info`)"""
@@ -158,6 +159,7 @@ def create_query(
         passengers=passengers.pb(),
         language=language,
         currency=currency,
+        _flights=flights,
     )
 
 

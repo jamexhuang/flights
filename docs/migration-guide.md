@@ -204,8 +204,8 @@ Calling `select_flight()` on a flight without a token raises `ValueError`.
 
 For trips with 3+ legs (e.g. SIN → TPE → NRT → TPE → SIN), you have two options.
 
-#### Option A: Automated Multi-city Chaining (v3.4.0 Recommended)
-The easiest way is using `get_flights_multicity_chained` which automatically sequentially queries the Google frontend to get realistic multi-leg continuity prices.
+#### Option A: `get_flights_multicity_chained` (v3.4.0 Recommended)
+Makes a **single API call** to Google's internal `GetShoppingResults` RPC. The response already contains all first-leg flight options with **total trip prices** — no sequential chaining required.
 
 ```python
 from fast_flights import get_flights_multicity_chained
@@ -217,9 +217,11 @@ query_legs = [
     FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
 ]
 
-# This automatically fetches the "best" token step-by-step
-results = get_flights_multicity_chained(query_legs, delay=1.0)
-print(f"Total chained price: {results[-1].total_price}")
+results = get_flights_multicity_chained(query_legs)
+
+# All legs share the same flights and total_price
+for flight in results[0].flights:
+    print(f"{flight.airlines} — total trip: ${flight.price}")
 ```
 
 #### Option B: Manual Chaining
@@ -264,8 +266,8 @@ print(f"Final leg options: {len(leg4)}")
 
 All query types (including return flights) work with integrations. 
 
-> ⚠️ **Warning on Multi-city Chaining:** 
-> The new `get_flights_multicity_chained` function (Option A) maintains an implicit HTTP session with `primp` to track Google context tokens. Therefore, it **does not support** passing `BrightData` or `Playwright` integration overrides. If you must use residential proxies, you must perform Option B (Manual Chaining) yourself.
+> ⚠️ **Integration limitation:**
+> `get_flights_multicity_chained` uses a `primp` HTTP session internally and **does not support** BrightData or Playwright integration overrides. If you need residential proxies or a browser-based fetch, use Option B (Manual Chaining) instead.
 
 #### Bright Data
 

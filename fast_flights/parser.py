@@ -25,6 +25,11 @@ def parse(html: str) -> MetaList:
 
     # find js
     script = parser.css_first(r"script.ds\:1")
+    if script is None:
+        raise ValueError(
+            "Could not find flight data in the HTML response. "
+            "The page may have been blocked by Google, or the HTML structure has changed."
+        )
     return parse_js(script.text())
 
 

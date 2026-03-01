@@ -55,18 +55,41 @@ def get_flights(q: Query, /, *, proxy: str | None = None) -> MetaList:
 
 
 def get_flights(
-    q: Query | str,
-    /,
-    *,
-    proxy: str | None = None,
-    integration: Integration | None = None,
+    q: Query | ReturnQuery | str, /, *, proxy: str | None = None, integration: Integration | None = None
 ) -> MetaList:
     """Get flights.
 
     Args:
         q: The query.
         proxy (str, optional): Proxy.
+        integration (Integration | None, optional): You can use Playwright or your own fetching config.
     """
+    if isinstance(q, str):
+        q = Query.from_url(q)
+
+    # For multi-city, the initial HTML does not contain flight data; we must use the RPC.
+    # q.trip == 3 corresponds to multi-city in TRIP_LOOKUP
+    if isinstance(q, Query) and q.trip == 3:
+        client = Client(
+            impersonate="chrome_127",
+            impersonate_os="macos",
+            referer=True,
+            proxy=proxy,
+            cookie_store=True,
+        )
+        if not q._flights:
+            raise ValueError("Multi-city search requires flight models. Pass FlightQuery legs into create_query.")
+
+        _, _, _, flights_found = fetch_shopping_results(
+            client=client,
+            legs=q._flights,
+            tokens=[],
+            language=q.language if q.language else "en-US",
+            currency=q.currency if q.currency else "USD"
+        )
+        # return empty list if none to maintain compatibility
+        return flights_found if flights_found else MetaList()
+
     html = fetch_flights_html(q, proxy=proxy, integration=integration)
     return parse(html)
 
@@ -121,12 +144,17 @@ def fetch_flights_html(
             params = {"q": q}
 
         res = client.get(
-            URL, 
-            params=params, 
+            URL,
+            params=params,
             headers={
                 "cookie": "CONSENT=YES+cb.20230810-00-p0.en+FX+874; SOCS=CAISHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
             }
         )
+        if res.status_code != 200:
+            raise RuntimeError(
+                f"Google Flights returned HTTP {res.status_code}. "
+                "The request may have been blocked or rate-limited."
+            )
         return res.text
 
     else:
@@ -284,16 +312,19 @@ def get_flights_multicity_chained(
     proxy: str | None = None,
     delay: float = 1.0,
 ) -> list[MulticityLegChained]:
-    """Search a multi-city itinerary sequentially, keeping the selection token chain context intact.
+    """Search a multi-city itinerary and return available options with total trip prices.
 
-    Google flights requires you to iteratively select an option for Leg 1 to see true accumulated prices for Leg 2, etc. 
-    This function automates this by selecting the first recommended token per leg automatically to chain the request.
-    
+    Each response from Google already contains the full list of first-leg flight options,
+    each priced as the total cost of the entire multi-city trip. A single API call is
+    therefore sufficient; this function makes that call (with automatic retry on transient
+    failures) and returns the result wrapped in the :class:`MulticityLegChained` structure.
+
     Returns:
-        A list of :class:`MulticityLegChained`, one per leg. The final element contains the full ticket price.
+        A list of :class:`MulticityLegChained`, one per input leg.
+        All entries share the same ``flights`` and ``total_price`` from the first
+        successful response.  ``flights`` contains the available first-leg options,
+        each with a ``price`` reflecting the entire trip cost.
     """
-    import time
-
     if len(flights) < 2:
         raise ValueError("Multi-city chaining requires at least 2 flight legs")
 
@@ -305,52 +336,25 @@ def get_flights_multicity_chained(
         cookie_store=True,
     )
 
+    tokens, price, _, flights_found = fetch_shopping_results(
+        client=client,
+        legs=flights,
+        tokens=[],
+        language=language,
+        currency=currency,
+    )
+
     all_legs: list[MulticityLegChained] = []
-    selected_tokens = []
-
     for i, leg in enumerate(flights):
-        if i > 0 and delay > 0:
-            time.sleep(delay)
-
-        tokens, price, content, flights_found = fetch_shopping_results(
-            client=client, 
-            legs=flights, 
-            tokens=selected_tokens, 
-            language=language, 
-            currency=currency
-        )
-        
-        leg_obj = MulticityLegChained(
+        all_legs.append(MulticityLegChained(
             leg_index=i,
             from_airport=leg.from_airport,
             to_airport=leg.to_airport,
             date=leg.date if isinstance(leg.date, str) else leg.date.strftime("%Y-%m-%d"),
             tokens=tokens,
             total_price=price,
-            flights=flights_found
-        )
-        all_legs.append(leg_obj)
-
-        if not tokens:
-            # Reached a dead end, token extraction failed or route invalid
-            break
-
-        # Select the highest priority token automatically for the next query
-        selected_tokens.append(tokens[0])
-
-    # Final query to resolve the complete booking sequence payload for prices if it wasn't populated yet
-    if len(selected_tokens) == len(flights):
-        if delay > 0:
-             time.sleep(delay)
-        # Re-fetch the final accumulated payload
-        _, price, _, _ = fetch_shopping_results(
-            client=client, 
-            legs=flights, 
-            tokens=selected_tokens,
-            language=language,
-            currency=currency
-        )
-        all_legs[-1].total_price = price
+            flights=flights_found,
+        ))
 
     return all_legs
 
