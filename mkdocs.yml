@@ -28,6 +28,7 @@ nav:
   - Filters: filters.md
   - Return flights: return-flights.md
   - Multi-city: multicity.md
+  - Baggage & Amenities: baggage.md
   - Fallbacks: fallbacks.md
   - Local playwright: local.md
   - Migration guide: migration-guide.md
