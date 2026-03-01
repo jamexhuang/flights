@@ -55,6 +55,12 @@ def parse_js(js: str):
 
     meta = JsMetadata(alliances=alliances, airlines=airlines)
 
+    # Build name→code lookup from metadata for airline_code resolution
+    _airline_name_to_code: dict[str, str] = {}
+    for a in airlines:
+        if a.name and a.code:
+            _airline_name_to_code[a.name] = a.code
+
     flights = MetaList()
     if payload[3] is None or payload[3][0] is None:
         flights.metadata = meta
@@ -82,6 +88,15 @@ def parse_js(js: str):
             typ = flight[0]
             airlines = flight[1]
 
+            # Resolve airline IATA code from metadata
+            _resolved_code = ""
+            if isinstance(airlines, list):
+                for name in airlines:
+                    code = _airline_name_to_code.get(name, "")
+                    if code:
+                        _resolved_code = code
+                        break
+
             sg_flights = []
 
             # multiple flights!
@@ -108,6 +123,7 @@ def parse_js(js: str):
                         arrival=arrival,
                         duration=duration,
                         plane_type=plane_type,
+                        airline_code=_resolved_code,
                     )
                 )
 

@@ -106,8 +106,15 @@ def _extract_full_flights_list(raw_response_text: str) -> 'MetaList | None':
             pass
 
         meta = JsMetadata(alliances=alliances, airlines=airlines_meta)
+
+        # Build name→code lookup from metadata for airline_code resolution
+        _airline_name_to_code: dict[str, str] = {}
+        for a in airlines_meta:
+            if a.name and a.code:
+                _airline_name_to_code[a.name] = a.code
+
         flights = MetaList()
-        
+
         flight_list = []
         
         # 1. Grab "Top Flights" (payload[2][0]) if available (often used for highly optimized multi-city bundles)
@@ -143,6 +150,16 @@ def _extract_full_flights_list(raw_response_text: str) -> 'MetaList | None':
 
                 typ = flight[0]
                 flight_airlines = flight[1]
+
+                # Resolve airline IATA code from metadata
+                _resolved_code = ""
+                if isinstance(flight_airlines, list):
+                    for name in flight_airlines:
+                        code = _airline_name_to_code.get(name, "")
+                        if code:
+                            _resolved_code = code
+                            break
+
                 sg_flights = []
 
                 for single_flight in flight[2]:
@@ -160,6 +177,7 @@ def _extract_full_flights_list(raw_response_text: str) -> 'MetaList | None':
                         from_airport=from_airport, to_airport=to_airport,
                         departure=departure, arrival=arrival,
                         duration=duration, plane_type=plane_type,
+                        airline_code=_resolved_code,
                     ))
 
                 carbon_emission = None
