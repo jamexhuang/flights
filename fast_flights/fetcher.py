@@ -80,12 +80,21 @@ def get_flights(
         if not q._flights:
             raise ValueError("Multi-city search requires flight models. Pass FlightQuery legs into create_query.")
 
+        # Reverse-lookup seat string from protobuf enum value
+        from .querying import SEAT_LOOKUP
+        seat_str = "economy"
+        for name, val in SEAT_LOOKUP.items():
+            if val == q.seat:
+                seat_str = name
+                break
+
         _, _, _, flights_found = fetch_shopping_results(
             client=client,
             legs=q._flights,
             tokens=[],
             language=q.language if q.language else "en-US",
-            currency=q.currency if q.currency else "USD"
+            currency=q.currency if q.currency else "USD",
+            seat=seat_str,
         )
         # return empty list if none to maintain compatibility
         return flights_found if flights_found else MetaList()
@@ -309,6 +318,7 @@ def get_flights_multicity_chained(
     *,
     language: str = "en-US",
     currency: str = "USD",
+    seat: str = "economy",
     proxy: str | None = None,
     delay: float = 1.0,
 ) -> list[MulticityLegChained]:
@@ -342,6 +352,7 @@ def get_flights_multicity_chained(
         tokens=[],
         language=language,
         currency=currency,
+        seat=seat,
     )
 
     all_legs: list[MulticityLegChained] = []

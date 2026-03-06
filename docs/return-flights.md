@@ -5,7 +5,7 @@ For **round-trip** searches, Google Flights uses a two-step selection flow:
 1. You see outbound (departing) flight options
 2. You pick one → Google shows return flight options with combined prices
 
-`fast-flights` mirrors this flow with `select_flight()` and `get_return_flights()`.
+`faster-flights` mirrors this flow with `select_flight()` and `get_return_flights()`.
 
 ## Quick start
 

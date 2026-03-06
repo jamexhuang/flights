@@ -5,7 +5,7 @@ In case the Playwright serverless functions are down or you prefer not to use th
 1. Install this package with the dependencies needed for Playwright:
 
 ```bash
-pip install fast-flights[local]
+pip install faster-flights[local]
 ```
 
 2. Install the Playwright browser:

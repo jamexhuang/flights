@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Annotated, Literal, Optional, Union
+from typing import Literal, Optional
 
 
 @dataclass
@@ -38,7 +38,7 @@ class SingleFlight:
     to_airport: Airport
     departure: SimpleDatetime
     arrival: SimpleDatetime
-    duration: Annotated[int, "(minutes)"]
+    duration: int  # minutes
     plane_type: str
     airline_code: str = ""
     flight_number: str = ""
@@ -46,8 +46,8 @@ class SingleFlight:
 
 @dataclass
 class CarbonEmission:
-    typical_on_route: Annotated[int, "(grams)"]
-    emission: Annotated[int, "(grams)"]
+    typical_on_route: int  # grams
+    emission: int  # grams
 
 
 @dataclass

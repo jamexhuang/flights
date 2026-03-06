@@ -1,6 +1,6 @@
-site_name: Flights
-site_url: https://github.com/AWeirdDev/flights
-repo_url: https://github.com/AWeirdDev/flights
+site_name: Faster Flights
+site_url: https://jamexhuang.github.io/flights
+repo_url: https://github.com/jamexhuang/flights
 theme:
   name: material
   icon:
@@ -49,8 +49,8 @@ extra:
   generator: false
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/AWeirdDev
-      name: AWeirdDev on GitHub
+      link: https://github.com/jamexhuang
+      name: jamexhuang on GitHub
   alternate:
     - name: English
       link: /
@@ -58,7 +58,7 @@ extra:
     - name: 繁體中文
       link: /zh-tw/
       lang: zh-TW
-copyright: "&copy; 2024 AWeirdDev"
+copyright: "&copy; 2024-2026 jamexhuang"
 markdown_extensions:
   - attr_list
   - pymdownx.emoji:

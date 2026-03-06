@@ -6,7 +6,7 @@ This page documents what baggage and amenity information is available from the G
 
 ## What's available
 
-`fast-flights` does **not** expose a dedicated baggage field yet, but the underlying Google Flights payload contains two relevant sources of information:
+`faster-flights` does **not** expose a dedicated baggage field yet, but the underlying Google Flights payload contains two relevant sources of information:
 
 | Source | What it contains | Where |
 |--------|-----------------|-------|
@@ -38,15 +38,15 @@ Each flight segment (a `SingleFlight` in the parsed model) has a raw amenity arr
 
 ### Observed index mapping
 
-The mapping below was determined by cross-referencing ~23 flights on the TPE↔NRT route (full-service and LCC carriers). **Positions marked ⚠ are inferred, not confirmed by Google.**
+This mapping has been extensively verified across multiple regional and long-haul routes via the `test/test_baggage.py` test suite and detailed in [`test/baggage_research_report.md`](../test/baggage_research_report.md).
 
-| Index | Likely meaning | Confidence |
-|-------|---------------|------------|
-| `[1]` | In-flight WiFi | ⚠ Medium — present on STARLUX, EVA, Cathay Pacific, some JAL |
-| `[3]` | Unknown (observed only on Scoot) | ⚠ Low |
-| `[4]` | Unknown (observed on JAL own-operated flights) | ⚠ Low |
-| `[5]` | Power/USB outlet or carry-on bag | ⚠ Medium — present on China Airlines, higher-fare Jetstar |
-| `[9]` | **Checked bag included** | ✅ High — present on ALL full-service carriers (JAL, EVA, STARLUX, CI, CX); absent on all LCCs (Scoot, Jetstar base, Tigerair, Peach) |
+| Index | Type | Confidence | Likely meaning |
+|-------|------|------------|---------------|
+| `[1]` | bool | ✅ High     | In-flight WiFi |
+| `[5]` | bool | ✅ High     | Power/USB outlet or carry-on bag (common on both LCC and Full Service) |
+| `[9]` | bool | ✅ High     | **Checked bag included** (Present on nearly all full-service carriers) |
+| `[10]`| bool | ⚠ Low      | Unknown (Observed on Malaysia Airlines) |
+| `[11]`| int  | ⚠ Med      | Seat Pitch / Legroom category (e.g., 2 or 3) |
 
 ### Examples from reverse-engineering session
 
@@ -75,7 +75,7 @@ def checked_bag_included(single_flight_raw_sf12) -> bool | None:
     or None if the data is absent (no amenity info from Google).
 
     single_flight_raw_sf12 is the raw sf[12] list from the payload;
-    not currently exposed by fast-flights' parsed model.
+    not currently exposed by faster-flights' parsed model.
     """
     if single_flight_raw_sf12 is None:
         return None
@@ -91,8 +91,8 @@ def checked_bag_included(single_flight_raw_sf12) -> bool | None:
 
 ## Notes & caveats
 
-- The `sf[12]` amenity array is **not yet exposed** in the `SingleFlight` dataclass. To access it you would need to work directly with `fetch_shopping_results()` and the raw payload.
-- The index mapping is based on empirical observation of ~23 flights on a single regional route (TPE↔NRT). Mapping may differ for long-haul routes or different fare classes.
+- The `sf[12]` amenity array is **not yet exposed** in the `SingleFlight` dataclass (see `test/baggage_research_report.md` for a potential implementation plan).
+- The index mapping is based on extensive empirical observation across various global routes.
 - Google does not document this internal format; indices could change at any time.
 - For authoritative baggage allowance information, always link users to `payload[11]` baggage URLs or the airline's official page.
 

@@ -1,6 +1,6 @@
-# fast-flights v3.4.0 — Migration & Usage Guide
+# faster-flights v3.4.0 — Migration & Usage Guide
 
-This guide covers how to migrate from the upstream `fast-flights` PyPI package to the fork, and documents all available features including **one-way search**, **max stops**, **round-trip with return flights**, **multi-city (N-leg)**, and **integrations**.
+This guide covers how to migrate from the upstream `fast-flights` PyPI package to `faster-flights`, and documents all available features including **one-way search**, **max stops**, **round-trip with return flights**, **multi-city (N-leg)**, and **integrations**.
 
 ---
 
@@ -24,7 +24,7 @@ pip install git+https://github.com/jamexhuang/flights.git@dev
 
 ```diff
 - fast-flights
-+ fast-flights @ git+https://github.com/jamexhuang/flights.git@dev
++ faster-flights @ git+https://github.com/jamexhuang/flights.git@dev
 ```
 
 #### pyproject.toml
@@ -32,7 +32,7 @@ pip install git+https://github.com/jamexhuang/flights.git@dev
 ```toml
 [project]
 dependencies = [
-    "fast-flights @ git+https://github.com/jamexhuang/flights.git@dev",
+    "faster-flights @ git+https://github.com/jamexhuang/flights.git@dev",
 ]
 ```
 
@@ -148,7 +148,7 @@ Google Flights uses a two-step flow for round-trips:
 1. **Step 1** — Show outbound (departing) flights
 2. **Step 2** — After selecting one, show return flights
 
-`fast-flights` now supports this:
+`faster-flights` now supports this:
 
 ```python
 # Step 1: Create round-trip query and fetch outbound flights

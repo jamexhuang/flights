@@ -1,6 +1,6 @@
 # Multi-City Flights
 
-`fast-flights` provides two approaches for multi-city (N-leg) itineraries.
+`faster-flights` provides two approaches for multi-city (N-leg) itineraries.
 
 ---
 

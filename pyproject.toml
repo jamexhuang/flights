@@ -30,9 +30,9 @@ local = [
 ]
 
 [project.urls]
-"Source" = "https://github.com/AWeirdDev/flights"
-"Issues" = "https://github.com/AWeirdDev/flights/issues"
-"Documentation" = "https://aweirddev.github.io/flights/"
+"Source" = "https://github.com/jamexhuang/flights"
+"Issues" = "https://github.com/jamexhuang/flights/issues"
+"Documentation" = "https://jamexhuang.github.io/flights/"
 
 [tool.flit.module]
 name = "fast_flights"

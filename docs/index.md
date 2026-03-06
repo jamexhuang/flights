@@ -1,14 +1,14 @@
-# :material-airplane-search: Fast Flights
+# :material-airplane-search: Faster Flights
 A fast, robust Google Flights scraper (API) for Python. (Probably)
 
-`fast-flights` uses Base64-encoded [Protobuf](https://developers.google.com/protocol-buffers) strings to generate the **`tfs` query parameter**, which stores all the information for a lookup request. We then parse the HTML content and extract the info we need using `selectolax`.
+`faster-flights` uses Base64-encoded [Protobuf](https://developers.google.com/protocol-buffers) strings to generate the **`tfs` query parameter**, which stores all the information for a lookup request. We then parse the HTML content and extract the info we need using `selectolax`.
 
 ```sh
-pip install fast-flights
+pip install faster-flights
 ```
 
 ## Getting started
-Here's `fast-flights` in 3 steps:
+Here's `faster-flights` in 3 steps:
 
 1. **Import** the package
 2. Add the **filters**
@@ -36,7 +36,7 @@ print(result)
 2. :fontawesome-solid-person-walking-luggage: This specifies the trip type (`round-trip` or `one-way`). Note that `multi-city` is **not yet** supported. Note that if you're having a `round-trip`, you need to add more than one item of flight data (in other words, 2+).
 3. :material-seat: Money-spending time! This specifies the seat type, which is `economy`, `premium-economy`, `business`, or `first`.
 4. :fontawesome-solid-people-line: Nice interface, eh? This specifies the number of a specific passenger type.
-5. :fontawesome-solid-person-falling: Sometimes, the data is built on demand on the client-side, while the core of `fast-flights` is built around scrapers from the ground up. We support fallbacks that run Playwright serverless functions to fetch for us instead. You could either specify `common` (default), `fallback` (recommended), or `force-fallback` (100% serverless Playwright). You do not need to install Playwright in order for this to work.
+5. :fontawesome-solid-person-falling: Sometimes, the data is built on demand on the client-side, while the core of `faster-flights` is built around scrapers from the ground up. We support fallbacks that run Playwright serverless functions to fetch for us instead. You could either specify `common` (default), `fallback` (recommended), or `force-fallback` (100% serverless Playwright). You do not need to install Playwright in order for this to work.
 
 ## How it's made
 
@@ -128,7 +128,7 @@ message GoogleSucks {
 
 It works! Now, I won't consider myself an "experienced Protobuf developer" but rather a complete beginner.
 
-I have no idea what I wrote but... it worked! And here it is, `fast-flights`.
+I have no idea what I wrote but... it worked! And here it is, `faster-flights`.
 
 
 ## Contributing

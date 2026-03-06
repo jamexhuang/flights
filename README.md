@@ -1,14 +1,14 @@
 <div align="center">
 
-# ✈️ fast-flights (v3.1.0)
+# ✈️ faster-flights (v3.4.0)
 
 The fast and strongly-typed Google Flights scraper (API) implemented in Python.
 Based on Base64-encoded Protobuf string.
 
-[**Documentation (v2)**](https://aweirddev.github.io/flights) • [Issues](https://github.com/AWeirdDev/flights/issues) • [PyPi (v3.0rc0)](https://pypi.org/project/fast-flights/3.0rc0/)
+[**Documentation**](https://jamexhuang.github.io/flights) • [Issues](https://github.com/jamexhuang/flights/issues) • [PyPI](https://pypi.org/project/faster-flights/)
 
 ```haskell
-$ pip install fast-flights
+$ pip install faster-flights
 ```
 
 </div>
@@ -39,7 +39,7 @@ res = get_flights(query)
 ```
 
 ## Round-trip (return flights)
-For round-trip searches, Google Flights uses a two-step flow: first you query outbound flights, then you select one and query return flights. `fast-flights` now supports this:
+For round-trip searches, Google Flights uses a two-step flow: first you query outbound flights, then you select one and query return flights. `faster-flights` now supports this:
 
 ```python
 from fast_flights import (
@@ -148,7 +148,7 @@ get_flights(..., integration=BrightData())
 - `v3.1.0` – **Round-trip return flights** and **multi-city (N-leg)** support via `select_flight()` + `get_return_flights()`.
 - `v3.0rc0` – Uses Javascript data instead.
 - `v2.2` – Now supports **local playwright** for sending requests.
-- `v2.0` – New (much more succinct) API, fallback support for Playwright serverless functions, and [documentation](https://aweirddev.github.io/flights)!
+- `v2.0` – New (much more succinct) API, fallback support for Playwright serverless functions, and [documentation](https://jamexhuang.github.io/flights)!
 
 ## Contributing
 Contributing is welcomed! A few notes though:
@@ -249,12 +249,12 @@ message GoogleSucks {
 
 It works! Now, I won't consider myself an "experienced Protobuf developer" but rather a complete beginner.
 
-I have no idea what I wrote but... it worked! And here it is, `fast-flights`.
+I have no idea what I wrote but... it worked! And here it is, `faster-flights`.
 
 ***
 
 <div align="center">
 
-(c) 2024-2026 AWeirdDev, and all the awesome people
+(c) 2024-2026 AWeirdDev & jamexhuang, and all the awesome people
 
 </div>
