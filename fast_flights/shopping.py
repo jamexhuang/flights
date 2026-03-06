@@ -6,7 +6,7 @@ from primp import Client
 from .querying import FlightQuery
 from .parser import MetaList
 
-def _encode_shopping_request(legs: list[FlightQuery], tokens: list[str]) -> str:
+def _encode_shopping_request(legs: list[FlightQuery], tokens: list[str], seat_val: int = 1) -> str:
     flights_array = []
     for leg in legs:
         date_str = leg.date if isinstance(leg.date, str) else leg.date.strftime("%Y-%m-%d")
@@ -27,7 +27,7 @@ def _encode_shopping_request(legs: list[FlightQuery], tokens: list[str]) -> str:
         
     inner_json = [
         tokens_arr,
-        [None, None, 3, None, [], 1, [1, 0, 0, 0], None, None, None, None, None, None, flights_array, None, None, None, 1],
+        [None, None, 3, None, [], seat_val, [1, 0, 0, 0], None, None, None, None, None, None, flights_array, None, None, None, 1],
         0, 0, 0, 1
     ]
     
@@ -209,6 +209,7 @@ def fetch_shopping_results(
     tokens: list[str],
     language: str = "en-US",
     currency: str = "USD",
+    seat: str = "economy",
     max_retries: int = 2,
 ) -> tuple[list[str], int | None, str, 'MetaList | None']:
     """
@@ -239,7 +240,14 @@ def fetch_shopping_results(
             "SOCS=CAISHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
         ),
     }
-    body = _encode_shopping_request(legs, tokens).encode("utf-8")
+    
+    from .querying import SEAT_LOOKUP
+    try:
+        seat_val = SEAT_LOOKUP.get(seat.lower(), 1)
+    except AttributeError:
+        seat_val = 1
+        
+    body = _encode_shopping_request(legs, tokens, seat_val).encode("utf-8")
 
     for attempt in range(1 + max_retries):
         if attempt > 0:
