@@ -1,31 +1,27 @@
 # faster-flights — Documentation Index
 
-> A fast, robust Google Flights scraper for Python.
+> A fast, typed Google Flights scraper for Python.
 >
 > ```sh
 > pip install faster-flights
 > ```
 
-This directory contains all documentation for `faster-flights`. The full rendered site is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) from these Markdown files.
-
----
+This directory contains the Markdown source for the public documentation site.
 
 ## Pages
 
 | File | Title | Description |
 |------|-------|-------------|
-| [index.md](index.md) | Get started | Installation, quick-start, and the story behind the project |
-| [filters.md](filters.md) | Filters | `FlightData`, `Passengers`, seat types, and trip types |
-| [airports.md](airports.md) | Airports | Using `search_airports()` and the `Airport` enum |
-| [return-flights.md](return-flights.md) | Return Flights | Round-trip two-step selection with `select_flight()` / `get_return_flights()` |
-| [multicity.md](multicity.md) | Multi-City Flights | `get_flights_multicity_chained()` and manual N-leg chaining |
-| [baggage.md](baggage.md) | Baggage & Amenities | Reverse-engineered payload fields for bag inclusion and airline amenities |
-| [fallbacks.md](fallbacks.md) | Fallbacks | Playwright serverless fallback modes |
-| [local.md](local.md) | Local Playwright | Running Playwright locally as an integration |
-| [migration-guide.md](migration-guide.md) | Migration Guide | Upgrading from older API versions |
-| [workaround.md](workaround.md) | 整合搜尋教學（zh-TW） | 單程、來回、多城市的完整使用範例、聯盟篩選、多機場批次查詢 |
-
----
+| [index.md](index.md) | Getting started | Install, quick start, and the current public API surface |
+| [filters.md](filters.md) | Query building | `FlightQuery`, `Passengers`, `create_query()`, seat types, trip types, and filters |
+| [airports.md](airports.md) | Airports & IATA codes | How airport inputs work in the public API |
+| [return-flights.md](return-flights.md) | Return flights | Round-trip two-step selection with `select_flight()` and `get_return_flights()` |
+| [multicity.md](multicity.md) | Multi-city | Supported multi-city workflows and their tradeoffs |
+| [baggage.md](baggage.md) | Baggage & amenities | Reverse-engineered payload fields for baggage and amenities |
+| [fallbacks.md](fallbacks.md) | Integrations & proxies | `integration=` and `proxy=` in the current API |
+| [local.md](local.md) | Custom integrations | Building your own local or browser-backed integration |
+| [migration-guide.md](migration-guide.md) | Migration guide | Updating older code and docs to the current API |
+| [workaround.md](workaround.md) | 整合搜尋教學（zh-TW） | 單程、來回、多城市、聯盟篩選、多機場批次查詢 |
 
 ## Quick links
 
@@ -33,10 +29,8 @@ This directory contains all documentation for `faster-flights`. The full rendere
 - **Usage example** — [`example.py`](../example.py)
 - **Package config** — [`pyproject.toml`](../pyproject.toml)
 - **MkDocs config** — [`mkdocs.yml`](../mkdocs.yml)
-- **Research Report** — [`test/baggage_research_report.md`](../test/baggage_research_report.md)
+- **Research report** — [`test/baggage_research_report.md`](../test/baggage_research_report.md)
 - **GitHub** — [jamexhuang/flights](https://github.com/jamexhuang/flights)
-
----
 
 ## CI/CD：保持使用最新版本
 
@@ -44,17 +38,15 @@ This directory contains all documentation for `faster-flights`. The full rendere
 
 ### requirements.txt
 
-```
+```text
 faster-flights @ git+https://github.com/jamexhuang/flights.git@dev
 ```
 
-> `pip install -r requirements.txt` 時加上 `--upgrade` 確保更新：
->
-> ```bash
-> pip install --upgrade -r requirements.txt
-> ```
+```bash
+pip install --upgrade -r requirements.txt
+```
 
-### pyproject.toml（使用 pip 安裝）
+### pyproject.toml
 
 ```toml
 [project]
@@ -63,7 +55,7 @@ dependencies = [
 ]
 ```
 
-### GitHub Actions 範例
+### GitHub Actions
 
 ```yaml
 jobs:
@@ -76,7 +68,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies (always fetch latest faster-flights)
+      - name: Install dependencies
         run: |
           pip install --no-cache-dir \
             "faster-flights @ git+https://github.com/jamexhuang/flights.git@dev"
@@ -85,5 +77,3 @@ jobs:
       - name: Run tests
         run: pytest
 ```
-
-> **提示**：`--no-cache-dir` 可避免 pip 使用快取中的舊版本，確保每次都從 Git 拉取最新程式碼。

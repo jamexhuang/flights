@@ -1,260 +1,233 @@
 <div align="center">
 
-# ✈️ faster-flights (v3.4.0)
+# ✈️ faster-flights
 
-The fast and strongly-typed Google Flights scraper (API) implemented in Python.
-Based on Base64-encoded Protobuf string.
+Fast, strongly-typed Google Flights scraping for Python.
 
 [**Documentation**](https://jamexhuang.github.io/flights) • [Issues](https://github.com/jamexhuang/flights/issues) • [PyPI](https://pypi.org/project/faster-flights/)
 
-```haskell
-$ pip install faster-flights
+```bash
+pip install faster-flights
 ```
 
 </div>
 
-## At a glance
+## Quick start
+
 ```python
-from fast_flights import (
-    FlightQuery,
-    Passengers, 
-    create_query, 
-    get_flights
-)
+from fast_flights import FlightQuery, Passengers, create_query, get_flights
 
 query = create_query(
     flights=[
         FlightQuery(
-            date="YYYY-MM-DD",   # change the date
-            from_airport="MYJ",  # three-letter name
-            to_airport="TPE",    # three-letter name
+            date="2026-03-31",
+            from_airport="TPE",
+            to_airport="NRT",
         ),
     ],
-    seat="economy",  # business/economy/first/premium-economy
-    trip="one-way",  # multi-city/one-way/round-trip
+    trip="one-way",
+    seat="economy",  # economy / premium-economy / business / first
     passengers=Passengers(adults=1),
-    language="zh-TW",
+    language="en-US",
+    currency="USD",
 )
-res = get_flights(query)
+
+results = get_flights(query)
+
+for flight in results[:3]:
+    print(f"{flight.airlines} - ${flight.price}")
 ```
 
-## Round-trip (return flights)
-For round-trip searches, Google Flights uses a two-step flow: first you query outbound flights, then you select one and query return flights. `faster-flights` now supports this:
+## Current public API
+
+The supported top-level API is the set exported from `fast_flights`:
+
+- `FlightQuery`
+- `Passengers`
+- `create_query()` and `create_filter()` (`create_filter` is a compatibility alias)
+- `get_flights()`
+- `select_flight()`
+- `get_return_flights()`
+- `get_flights_multicity()`
+- `get_flights_multicity_chained()`
+- `fetch_flights_html()`
+
+Use IATA airport codes like `"TPE"`, `"NRT"`, or `"JFK"` in `FlightQuery`. The repository does not currently export a public airport search helper.
+
+## Round-trip searches
+
+Round-trip search is a two-step flow:
+
+1. Query outbound options with `get_flights()`
+2. Select one outbound option and fetch return options with `get_return_flights()`
 
 ```python
 from fast_flights import (
-    FlightQuery, Passengers,
-    create_query, get_flights,
-    select_flight, get_return_flights, # new!
+    FlightQuery,
+    Passengers,
+    create_query,
+    get_flights,
+    get_return_flights,
+    select_flight,
 )
 
-# Step 1 – query outbound flights
 query = create_query(
     flights=[
-        FlightQuery(date="2026-03-15", from_airport="CDG", to_airport="TPE"),
-        FlightQuery(date="2026-03-19", from_airport="TPE", to_airport="CDG"),
+        FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+        FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="TPE"),
     ],
-    seat="economy",
     trip="round-trip",
+    seat="business",
     passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
 )
-outbound = get_flights(query)
 
-# Step 2 – pick a flight, then query return flights
+outbound = get_flights(query)
 return_query = select_flight(query, outbound[0])
 returning = get_return_flights(return_query)
 ```
 
-Each outbound result carries an internal session token (`select_token`) that links to the available return options. The `select_flight()` helper wraps it into a `ReturnQuery` that `get_return_flights()` can consume.
+Each outbound result carries a hidden `select_token`. `select_flight()` wraps that token into a `ReturnQuery`.
 
-> **Note:** This also works with integrations (e.g. `get_return_flights(rq, integration=BrightData())`).
+## Multi-city searches
 
-## Multi-city (N legs)
-For multi-city/multi-leg trips, you have two options:
+There are three supported multi-city workflows.
 
-**Option 1: `get_flights_multicity_chained` (Recommended)**
-Makes a single call to Google's internal `GetShoppingResults` RPC. Google's response already contains all available first-leg flight options, each priced as the **total cost of the entire multi-city trip** — no sequential chaining required.
+### 1. Total trip price + first-leg options
+
+Use `get_flights_multicity_chained()` when you want Google's bundled multi-city pricing in one RPC call.
 
 ```python
 from fast_flights import FlightQuery, get_flights_multicity_chained
 
 legs = [
-    FlightQuery(date="2026-03-15", from_airport="SIN", to_airport="TPE"),
-    FlightQuery(date="2026-03-21", from_airport="TPE", to_airport="NRT"),
-    FlightQuery(date="2026-03-24", from_airport="NRT", to_airport="TPE"),
-    FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
+    FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+    FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="HKG"),
+    FlightQuery(date="2026-04-10", from_airport="HKG", to_airport="TPE"),
 ]
 
-result = get_flights_multicity_chained(legs)
-
-# All legs share the same flights list and total_price
-for flight in result[0].flights:
-    print(f"{flight.airlines} — total trip: ${flight.price}")
-```
-
-> **⚙️ Technical Note:**
-> `fast_flights` calls Google's hidden `GetShoppingResults` HTTP RPC endpoint with all legs in a single `f.req` payload. The response includes complete flight options with per-option total-trip prices parsed directly from the JSON payload — no Playwright or Selenium required.
->
-> *Caveats:*
-> - The `flights` field on each `MulticityLegChained` reflects **first-leg options only** (e.g. SIN→TPE). Subsequent legs' specific flight times are encoded in each result's `select_token` for further chaining.
-> - **Integrations / Fallbacks are not supported**: `get_flights_multicity_chained` uses a `primp` HTTP session and cannot use BrightData or Playwright integrations.
-
-**Option 2: Manual Selection (fine-grained control)**
-You can manually chain `select_flight()` calls to step through each leg yourself:
-
-```python
-query = create_query(
-    flights=[
-        FlightQuery(date="2026-03-15", from_airport="SIN", to_airport="TPE"),
-        FlightQuery(date="2026-03-21", from_airport="TPE", to_airport="NRT"),
-        FlightQuery(date="2026-03-24", from_airport="NRT", to_airport="TPE"),
-        FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
-    ],
+result = get_flights_multicity_chained(
+    legs,
     seat="economy",
-    trip="multi-city",
-    passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
 )
 
-# Leg 1
-leg1 = get_flights(query)
-rq = select_flight(query, leg1[0])
-
-# Leg 2
-leg2 = get_return_flights(rq)
-rq = select_flight(rq, leg2[0])       # pass ReturnQuery to chain
-
-# Leg 3
-leg3 = get_return_flights(rq)
-rq = select_flight(rq, leg3[0])
-
-# Leg 4
-leg4 = get_return_flights(rq)
+print(result[0].total_price)
+print(len(result[0].flights))  # first-leg options only
 ```
 
-## Integrations
-If you'd like, you can use integrations.
+### 2. Per-leg flight details
 
-Bright data:
+Use `get_flights_multicity()` when you want each leg as an independent one-way search.
+
+```python
+from fast_flights import FlightQuery, Passengers, get_flights_multicity
+
+legs = get_flights_multicity(
+    flights=[
+        FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+        FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="HKG"),
+        FlightQuery(date="2026-04-10", from_airport="HKG", to_airport="TPE"),
+    ],
+    seat="economy",
+    passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
+)
+```
+
+This returns per-leg one-way pricing, not Google's bundled total trip price.
+
+### 3. Hybrid workflow
+
+Use `get_flights(create_query(..., trip="multi-city"))` for the first-leg bundled options, then `get_flights_multicity()` for detailed options on legs 2+.
+
+```python
+from fast_flights import (
+    FlightQuery,
+    Passengers,
+    create_query,
+    get_flights,
+    get_flights_multicity,
+)
+
+legs = [
+    FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+    FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="HKG"),
+    FlightQuery(date="2026-04-10", from_airport="HKG", to_airport="TPE"),
+]
+
+query = create_query(
+    flights=legs,
+    trip="multi-city",
+    seat="economy",
+    passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
+)
+
+leg1 = get_flights(query)
+remaining = get_flights_multicity(
+    flights=legs[1:],
+    seat="economy",
+    passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
+)
+```
+
+The round-trip return-flight API is not the supported way to fetch legs 2+ for multi-city itineraries. Google's HTML response for that path does not provide the required data.
+
+## Integrations and proxies
+
+Fetching customization is done with `integration=` and `proxy=`. The current public API does not expose legacy fetch flags or a packaged local-browser mode.
+
+### Bright Data
 
 ```python
 from fast_flights import get_flights
 from fast_flights.integrations import BrightData
 
-get_flights(..., integration=BrightData())
+integration = BrightData(api_key="...")
+results = get_flights(query, integration=integration)
 ```
 
-## What's new
-- `v3.4.0` – **Native Multi-City Support** in `get_flights()` using `GetShoppingResults` RPC. `get_flights_multicity_chained` makes a **single API call** to fetch all first-leg options with full trip prices — no sequential chaining needed.
-- `v3.1.0` – **Round-trip return flights** and **multi-city (N-leg)** support via `select_flight()` + `get_return_flights()`.
-- `v3.0rc0` – Uses Javascript data instead.
-- `v2.2` – Now supports **local playwright** for sending requests.
-- `v2.0` – New (much more succinct) API, fallback support for Playwright serverless functions, and [documentation](https://jamexhuang.github.io/flights)!
+### Custom integrations
+
+Subclass `fast_flights.integrations.base.Integration` and implement `fetch_html(q) -> str`.
+
+```python
+from fast_flights.integrations.base import Integration
+
+
+class MyIntegration(Integration):
+    def fetch_html(self, q):
+        return "...html..."
+```
+
+### Proxy support
+
+```python
+results = get_flights(query, proxy="http://user:pass@proxy:8080")
+```
+
+`get_flights_multicity()` also forwards `integration=` and `proxy=` to each per-leg one-way search. RPC-based multi-city flows (`get_flights(...trip="multi-city")` and `get_flights_multicity_chained()`) support `proxy=` but not integration overrides.
+
+## Documentation
+
+- [Getting started](https://jamexhuang.github.io/flights/)
+- [Query building](https://jamexhuang.github.io/flights/filters/)
+- [Return flights](https://jamexhuang.github.io/flights/return-flights/)
+- [Multi-city](https://jamexhuang.github.io/flights/multicity/)
+- [Integrations and proxies](https://jamexhuang.github.io/flights/fallbacks/)
 
 ## Contributing
-Contributing is welcomed! A few notes though:
+
+Contributing is welcomed. A few notes though:
+
 1. please no ai slop. i am not reading all that.
 2. one change at a time. what your title says is what you've changed.
 3. no new dependencies unless it's related to the core parsing.
 4. really, i cant finish reading all of them, i have other projects and life to do. really sorry
-
-***
-
-## How it's made
-
-The other day, I was making a chat-interface-based trip recommendation app and wanted to add a feature that can search for flights available for booking. My personal choice is definitely [Google Flights](https://flights.google.com) since Google always has the best and most organized data on the web. Therefore, I searched for APIs on Google.
-
-> 🔎 **Search** <br />
-> google flights api
-
-The results? Bad. It seems like they discontinued this service and it now lives in the Graveyard of Google.
-
-> <sup><a href="https://duffel.com/blog/google-flights-api" target="_blank">🧏‍♂️ <b>duffel.com</b></a></sup><br />
-> <sup><i>Google Flights API: How did it work & what happened to it?</i></b>
->
-> The Google Flights API offered developers access to aggregated airline data, including flight times, availability, and prices. Over a decade ago, Google announced the acquisition of ITA Software Inc. which it used to develop its API. **However, in 2018, Google ended access to the public-facing API and now only offers access through the QPX enterprise product**.
-
-That's awful! I've also looked for free alternatives but their rate limits and pricing are just 😬 (not a good fit/deal for everyone).
-
-<br />
-
-However, Google Flights has their UI – [flights.google.com](https://flights.google.com). So, maybe I could just use Developer Tools to log the requests made and just replicate all of that? Undoubtedly not! Their requests are just full of numbers and unreadable text, so that's not the solution.
-
-Perhaps, we could scrape it? I mean, Google allowed many companies like [Serpapi](https://google.com/search?q=serpapi) to scrape their web just pretending like nothing happened... So let's scrape our own.
-
-> 🔎 **Search** <br />
-> google flights ~~api~~ scraper pypi
-
-Excluding the ones that are not active, I came across [hugoglvs/google-flights-scraper](https://pypi.org/project/google-flights-scraper) on Pypi. I thought to myself: "aint no way this is the solution!"
-
-I checked hugoglvs's code on [GitHub](https://github.com/hugoglvs/google-flights-scraper), and I immediately detected "playwright," my worst enemy. One word can describe it well: slow. Two words? Extremely slow. What's more, it doesn't even run on the **🗻 Edge** because of configuration errors, missing libraries... etc. I could just reverse [try.playwright.tech](https://try.playwright.tech) and use a better environment, but that's just too risky if they added Cloudflare as an additional security barrier 😳.
-
-Life tells me to never give up. Let's just take a look at their URL params...
-
-```markdown
-https://www.google.com/travel/flights/search?tfs=CBwQAhoeEgoyMDI0LTA1LTI4agcIARIDVFBFcgcIARIDTVlKGh4SCjIwMjQtMDUtMzBqBwgBEgNNWUpyBwgBEgNUUEVAAUgBcAGCAQsI____________AZgBAQ&hl=en
-```
-
-| Param | Content | My past understanding |
-|-------|---------|-----------------------|
-| hl    | en      | Sets the language.    |
-| tfs   | CBwQAhoeEgoyMDI0LTA1LTI4agcIARID… | What is this???? 🤮🤮 |
-
-I removed the `?tfs=` parameter and found out that this is the control of our request! And it looks so base64-y.
-
-If we decode it to raw text, we can still see the dates, but we're not quite there — there's too much unwanted Unicode text.
-
-Or maybe it's some kind of a **data-storing method** Google uses? What if it's something like JSON? Let's look it up.
-
-> 🔎 **Search** <br />
-> google's json alternative
-
-> 🐣 **Result**<br />
-> Solution: The Power of **Protocol Buffers**
-> 
-> LinkedIn turned to Protocol Buffers, often referred to as **protobuf**, a binary serialization format developed by Google. The key advantage of Protocol Buffers is its efficiency, compactness, and speed, making it significantly faster than JSON for serialization and deserialization.
-
-Gotcha, Protobuf! Let's feed it to an online decoder and see how it does:
-
-> 🔎 **Search** <br />
-> protobuf decoder
-
-> 🐣 **Result**<br />
-> [protobuf-decoder.netlify.app](https://protobuf-decoder.netlify.app)
-
-I then pasted the Base64-encoded string to the decoder and no way! It DID return valid data!
-
-![annotated, Protobuf Decoder screenshot](https://github.com/AWeirdDev/flights/assets/90096971/77dfb097-f961-4494-be88-3640763dbc8c)
-
-I immediately recognized the values — that's my data, that's my query!
-
-So, I wrote some simple Protobuf code to decode the data.
-
-```protobuf
-syntax = "proto3"
-
-message Airport {
-    string name = 2;
-}
-
-message FlightInfo {
-    string date = 2;
-    Airport dep_airport = 13;
-    Airport arr_airport = 14;
-}
-
-message GoogleSucks {
-    repeated FlightInfo = 3;
-}
-```
-
-It works! Now, I won't consider myself an "experienced Protobuf developer" but rather a complete beginner.
-
-I have no idea what I wrote but... it worked! And here it is, `faster-flights`.
-
-***
-
-<div align="center">
-
-(c) 2024-2026 AWeirdDev & jamexhuang, and all the awesome people
-
-</div>

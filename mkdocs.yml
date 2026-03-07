@@ -24,13 +24,13 @@ theme:
     - content.code.annotate
 nav:
   - Get started: index.md
-  - Airports: airports.md
-  - Filters: filters.md
+  - Airports & IATA codes: airports.md
+  - Query building: filters.md
   - Return flights: return-flights.md
   - Multi-city: multicity.md
   - Baggage & Amenities: baggage.md
-  - Fallbacks: fallbacks.md
-  - Local playwright: local.md
+  - Integrations & proxies: fallbacks.md
+  - Custom integrations: local.md
   - Migration guide: migration-guide.md
 plugins:
   - search

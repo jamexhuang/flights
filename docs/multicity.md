@@ -1,100 +1,126 @@
-# Multi-City Flights
+# Multi-City
 
-`faster-flights` provides two approaches for multi-city (N-leg) itineraries.
+`faster-flights` supports multi-city itineraries, but there are different workflows depending on whether you want Google's bundled total price or detailed per-leg results.
 
----
+## Workflow 1: `get_flights_multicity_chained()`
 
-## Option A: `get_flights_multicity_chained` (Recommended)
-
-Makes a **single call** to Google's internal `GetShoppingResults` RPC. The response already contains all available first-leg flight options, each priced as the **total cost of the entire multi-city trip**.
+Use this when you want Google's bundled multi-city pricing in one RPC call.
 
 ```python
 from fast_flights import FlightQuery, get_flights_multicity_chained
 
 legs = [
-    FlightQuery(date="2026-03-15", from_airport="SIN", to_airport="TPE"),
-    FlightQuery(date="2026-03-21", from_airport="TPE", to_airport="NRT"),
-    FlightQuery(date="2026-03-24", from_airport="NRT", to_airport="TPE"),
-    FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
+    FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+    FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="HKG"),
+    FlightQuery(date="2026-04-10", from_airport="HKG", to_airport="TPE"),
 ]
 
 result = get_flights_multicity_chained(
     legs,
+    seat="economy",
     language="en-US",
     currency="USD",
 )
 
-# All legs share the same flights list and total_price
-for flight in result[0].flights:
-    print(f"{flight.airlines} — total trip: ${flight.price}")
-
-# Or access summary via any leg entry
-print(f"Cheapest total price: ${result[0].total_price}")
+print(result[0].total_price)
+print(len(result[0].flights))
 ```
 
-### Return value: `list[MulticityLegChained]`
+### What you get
 
-One entry per input leg. All entries share the same `flights` and `total_price` from the single API response.
+- A `list[MulticityLegChained]`
+- One entry per requested leg
+- Shared `total_price` across all entries
+- Shared `flights` object containing first-leg options only
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `leg_index` | `int` | 0-based leg index |
-| `from_airport` | `str` | Origin IATA code |
-| `to_airport` | `str` | Destination IATA code |
-| `date` | `str` | Departure date (`YYYY-MM-DD`) |
-| `tokens` | `list[str]` | Available selection tokens from the response |
-| `total_price` | `int \| None` | Cheapest total trip price found |
-| `flights` | `MetaList \| None` | First-leg flight options (same as `get_flights()`) |
+### Important limitation
 
-### How it works
+The `flights` field contains first-leg options only. Google encodes later-leg combinations inside the RPC response, but this library does not expose later legs as separate `get_return_flights()` pages.
 
-`fast_flights` sends a single POST to Google's `GetShoppingResults` endpoint with all legs encoded in the `f.req` payload. The response is a nested JSON structure; the inner payload at `[2][0]` (Top Flights) and `[3][0]` (All Flights) contains first-leg options where each option's `price` already reflects the **entire multi-city trip cost** — Google bundles the pricing from the start.
+## Workflow 2: `get_flights_multicity()`
 
-### Limitations
+Use this when you want detailed options for every leg as independent one-way searches.
 
-- **First-leg flights only**: The `flights` field contains segments for the first leg only (e.g. SIN→TPE). Specific flight options for subsequent legs are encoded in each result's `select_token` for further chaining.
-- **No integrations**: Uses a `primp` HTTP session internally; BrightData and Playwright integrations are not supported.
+```python
+from fast_flights import FlightQuery, Passengers, get_flights_multicity
 
----
+legs = get_flights_multicity(
+    flights=[
+        FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+        FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="HKG"),
+        FlightQuery(date="2026-04-10", from_airport="HKG", to_airport="TPE"),
+    ],
+    seat="business",
+    passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
+    delay=1.5,
+)
 
-## Option B: Manual Chaining with `select_flight()`
+for leg in legs:
+    print(leg.leg_index, leg.from_airport, leg.to_airport, len(leg.results))
+```
 
-For full control over which specific flight is selected on each leg, use `trip="multi-city"` with `get_flights()` and manually chain `select_flight()` calls:
+### What you get
+
+- A `list[MulticityLeg]`
+- Detailed parsed results per leg
+- Per-leg one-way pricing
+- Support for `integration=` and `proxy=`
+
+### Tradeoff
+
+This does not use Google's bundled multi-city total price. You are looking at independent one-way searches.
+
+## Workflow 3: Hybrid
+
+Use this when you want:
+
+1. Google's bundled total price and first-leg options
+2. Detailed leg-by-leg options for legs 2+
 
 ```python
 from fast_flights import (
-    FlightQuery, Passengers, create_query,
-    get_flights, select_flight, get_return_flights,
+    FlightQuery,
+    Passengers,
+    create_query,
+    get_flights,
+    get_flights_multicity,
 )
+
+legs = [
+    FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+    FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="HKG"),
+    FlightQuery(date="2026-04-10", from_airport="HKG", to_airport="TPE"),
+]
 
 query = create_query(
-    flights=[
-        FlightQuery(date="2026-03-15", from_airport="SIN", to_airport="TPE"),
-        FlightQuery(date="2026-03-21", from_airport="TPE", to_airport="NRT"),
-        FlightQuery(date="2026-03-24", from_airport="NRT", to_airport="TPE"),
-        FlightQuery(date="2026-03-27", from_airport="TPE", to_airport="SIN"),
-    ],
-    seat="economy",
+    flights=legs,
     trip="multi-city",
+    seat="economy",
     passengers=Passengers(adults=1),
-    currency="EUR",
+    language="en-US",
+    currency="USD",
 )
 
-# Leg 1: SIN → TPE
 leg1 = get_flights(query)
-rq = select_flight(query, leg1[0])
-
-# Leg 2: TPE → NRT
-leg2 = get_return_flights(rq)
-rq = select_flight(rq, leg2[0])
-
-# Leg 3: NRT → TPE
-leg3 = get_return_flights(rq)
-rq = select_flight(rq, leg3[0])
-
-# Leg 4: TPE → SIN (final)
-leg4 = get_return_flights(rq)
-print(f"Final leg options: {len(leg4)}, best: €{leg4[0].price}")
+remaining = get_flights_multicity(
+    flights=legs[1:],
+    seat="economy",
+    passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
+)
 ```
 
-This approach supports all integrations (BrightData, Playwright) and lets you pick specific flights at each step. The `price` on the final leg reflects the total trip cost as confirmed by Google.
+## What not to do
+
+The round-trip return-flight API is not the supported way to fetch legs 2+ of a multi-city itinerary.
+
+The current Google HTML response for that path does not contain the required data for later multi-city legs, so manual `select_flight()` chaining with the round-trip return-flight flow is not a supported multi-city workflow.
+
+## Integration behavior
+
+- `get_flights_multicity()` supports `integration=` and `proxy=`
+- `get_flights_multicity_chained()` supports `proxy=` but not `integration=`
+- `get_flights(create_query(..., trip="multi-city"))` also uses the RPC path internally, so it supports `proxy=` but not `integration=`
