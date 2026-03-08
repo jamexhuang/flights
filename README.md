@@ -178,6 +178,23 @@ remaining = get_flights_multicity(
 )
 ```
 
+### 4. Direct Google Flights selected page
+
+Use `get_selected_flight_page()` when a user picks an option and you want the direct Google Flights page for that selection.
+
+```python
+from fast_flights import get_selected_flight_page
+
+selected = get_selected_flight_page(query, leg1[0])
+
+print(selected.url)
+print(selected.f_sid)
+print(selected.bl)
+print(selected.data_service_requests["ds:1"].rpc_id)
+```
+
+For multi-city searches, this gives you the real Google Flights selected page plus the client-side data-service requests embedded in that page. Later-leg bundled options are still not exposed as parsed `Flights` objects by this library.
+
 The round-trip return-flight API is not the supported way to fetch legs 2+ for multi-city itineraries. Google's HTML response for that path does not provide the required data.
 
 ## Integrations and proxies

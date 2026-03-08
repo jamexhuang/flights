@@ -113,6 +113,29 @@ remaining = get_flights_multicity(
 )
 ```
 
+## Workflow 4: Direct Google Flights selected page
+
+Use this when a user picks a bundled first-leg option and you want the direct Google Flights page for that exact selection.
+
+```python
+from fast_flights import get_selected_flight_page
+
+selected = get_selected_flight_page(query, leg1[0])
+
+print(selected.url)
+print(selected.f_sid)
+print(selected.bl)
+print(selected.data_service_requests["ds:1"].rpc_id)
+```
+
+This selected page is useful for product handoff flows because it exposes:
+
+- The direct Google Flights URL with the chosen flight encoded in `tfu`
+- The frontend `f_sid` and `bl` values from `window.WIZ_global_data`
+- The embedded `AF_dataServiceRequests` payloads used by Google's client-side page
+
+It does **not** yet mean later-leg bundled options are available as parsed `Flights` results in this library.
+
 ## What not to do
 
 The round-trip return-flight API is not the supported way to fetch legs 2+ of a multi-city itinerary.

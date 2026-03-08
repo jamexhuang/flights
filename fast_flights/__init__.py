@@ -14,9 +14,12 @@ from .fetcher import (
     get_return_flights,
     get_flights_multicity,
     get_flights_multicity_chained,
+    get_selected_flight_page,
     fetch_flights_html,
+    GoogleFlightsDataServiceRequest,
     MulticityLeg,
     MulticityLegChained,
+    SelectedFlightPage,
 )
 
 __all__ = [
@@ -31,9 +34,11 @@ __all__ = [
     "get_return_flights",
     "get_flights_multicity",
     "get_flights_multicity_chained",
+    "get_selected_flight_page",
     "fetch_flights_html",
+    "GoogleFlightsDataServiceRequest",
     "MulticityLeg",
     "MulticityLegChained",
+    "SelectedFlightPage",
     "integrations",
 ]
-

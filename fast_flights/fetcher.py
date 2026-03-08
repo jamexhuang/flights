@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import overload, TYPE_CHECKING
 
@@ -315,6 +316,158 @@ class MulticityLegChained:
     flights: MetaList | None
 
 
+@dataclass
+class GoogleFlightsDataServiceRequest:
+    """Client-side data service request embedded in a selected Google Flights page."""
+
+    key: str
+    rpc_id: str
+    request: list
+
+
+@dataclass
+class SelectedFlightPage:
+    """Google Flights page state after selecting a flight.
+
+    Attributes:
+        return_query: Query wrapper containing the selected-flight ``tfu`` token.
+        url: Direct Google Flights URL for the selected page.
+        f_sid: Request session identifier extracted from ``window.WIZ_global_data``.
+        bl: Frontend build label extracted from ``window.WIZ_global_data``.
+        data_service_requests: Client-side RPC requests keyed by ``ds:*`` name.
+    """
+
+    return_query: ReturnQuery
+    url: str
+    f_sid: str | None
+    bl: str | None
+    data_service_requests: dict[str, GoogleFlightsDataServiceRequest]
+
+
+def _extract_wiz_global_value(html: str, key: str) -> str | None:
+    marker = f'"{key}":"'
+    start = html.find(marker)
+    if start == -1:
+        return None
+    start += len(marker)
+    end = start
+    while end < len(html):
+        ch = html[end]
+        if ch == '"' and html[end - 1] != "\\":
+            break
+        end += 1
+    if end >= len(html):
+        return None
+    return json.loads(f'"{html[start:end]}"')
+
+
+def _extract_balanced_list(text: str, start: int) -> tuple[str, int]:
+    if start >= len(text) or text[start] != "[":
+        raise ValueError("Expected list start '['")
+
+    depth = 0
+    in_string = False
+    escape = False
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1], idx + 1
+
+    raise ValueError("Unterminated list in data service request")
+
+
+def _extract_data_service_requests(html: str) -> dict[str, GoogleFlightsDataServiceRequest]:
+    """Extract client-side AF_dataService request payloads from a Google Flights page."""
+    marker = "var AF_dataServiceRequests = {"
+    start = html.find(marker)
+    if start == -1:
+        return {}
+
+    requests_block = html[start + len(marker) :]
+    requests: dict[str, GoogleFlightsDataServiceRequest] = {}
+    cursor = 0
+    while True:
+        key_start = requests_block.find("'ds:", cursor)
+        if key_start == -1:
+            break
+
+        key_end = requests_block.find("'", key_start + 1)
+        if key_end == -1:
+            break
+        key = requests_block[key_start + 1 : key_end]
+
+        id_marker = "{id:'"
+        id_start = requests_block.find(id_marker, key_end)
+        if id_start == -1:
+            break
+        id_start += len(id_marker)
+        id_end = requests_block.find("'", id_start)
+        if id_end == -1:
+            break
+        rpc_id = requests_block[id_start:id_end]
+
+        request_marker = "request:"
+        request_start = requests_block.find(request_marker, id_end)
+        if request_start == -1:
+            break
+        request_start += len(request_marker)
+
+        try:
+            request_json, cursor = _extract_balanced_list(requests_block, request_start)
+        except ValueError:
+            break
+
+        requests[key] = GoogleFlightsDataServiceRequest(
+            key=key,
+            rpc_id=rpc_id,
+            request=json.loads(request_json),
+        )
+
+    return requests
+
+
+def get_selected_flight_page(
+    query: Query | ReturnQuery,
+    flight: "Flights",
+    /,
+    *,
+    proxy: str | None = None,
+    integration: Integration | None = None,
+) -> SelectedFlightPage:
+    """Build the selected Google Flights page for a chosen flight.
+
+    This is useful for product flows that want a direct Google Flights URL after
+    a user picks an option.  The returned page metadata also exposes the
+    client-side data service requests that Google's frontend embeds in the page.
+    """
+    from .querying import select_flight
+
+    selected_query = select_flight(query, flight)
+    html = fetch_flights_html(selected_query, proxy=proxy, integration=integration)
+    return SelectedFlightPage(
+        return_query=selected_query,
+        url=selected_query.url(),
+        f_sid=_extract_wiz_global_value(html, "FdrFJe"),
+        bl=_extract_wiz_global_value(html, "cfb2h"),
+        data_service_requests=_extract_data_service_requests(html),
+    )
+
+
 def get_flights_multicity_chained(
     flights: "list[FlightQuery]",
     *,
@@ -364,4 +517,3 @@ def get_flights_multicity_chained(
         ))
 
     return all_legs
-
