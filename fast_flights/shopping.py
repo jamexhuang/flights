@@ -218,7 +218,7 @@ def fetch_shopping_results(
     language: str = "en-US",
     currency: str = "USD",
     seat: str = "economy",
-    max_retries: int = 2,
+    max_retries: int = 3,
 ) -> tuple[list[str], int | None, str, 'MetaList | None']:
     """
     Submits a multicity booking selection request to GetShoppingResults.
@@ -227,20 +227,30 @@ def fetch_shopping_results(
     Retries up to ``max_retries`` times when the request times out or flight
     parsing returns no results (Google occasionally returns a session-init
     response instead of flight data).
+
+    On the first attempt, a lightweight GET warmup is sent to
+    ``/travel/flights`` to establish cookies that Google expects before
+    serving RPC data (especially for premium cabin classes).
     """
     import time as _time
 
     url = (
         "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights"
         f".FlightsFrontendService/GetShoppingResults"
-        f"?f.sid=-5642963406499784770&bl=boq_travel-frontend-flights-ui_20260225.02_p0"
+        f"?f.sid=6697578230526900010&bl=boq_travel-frontend-flights-ui_20260303.06_p0"
         f"&hl={language}&gl=US&curr={currency}&soc-app=162&soc-platform=1&soc-device=1&rt=c"
     )
+    # Build the language/currency metadata header that Google's frontend sends
+    _lang_code = language if language else "en-US"
+    _curr_code = currency if currency else "USD"
     headers = {
         "accept": "*/*",
-        "accept-language": language,
+        "accept-language": _lang_code,
         "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
         "user-agent": DEFAULT_RPC_USER_AGENT,
+        "origin": "https://www.google.com",
+        "referer": "https://www.google.com/travel/flights",
+        "x-goog-ext-259736195-jspb": f'["{_lang_code}","IE","{_curr_code}",1,null,[0],null,null,1,[]]',
         "cookie": (
             "CONSENT=YES+cb.20230810-00-p0.en+FX+874; "
             "SOCS=CAISHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
@@ -253,6 +263,19 @@ def fetch_shopping_results(
     except AttributeError:
         seat_val = 1
 
+    # Session warmup: visit Google Flights to set cookies before the RPC call
+    try:
+        client.get(
+            "https://www.google.com/travel/flights",
+            headers={
+                "user-agent": DEFAULT_RPC_USER_AGENT,
+                "accept-language": _lang_code,
+                "cookie": headers["cookie"],
+            },
+        )
+    except Exception:
+        pass  # Warmup failure is non-fatal
+
     body = _encode_shopping_request(legs, tokens, seat_val).encode("utf-8")
     tokens_found: list[str] = []
     content = ""
@@ -260,7 +283,8 @@ def fetch_shopping_results(
 
     for attempt in range(1 + max_retries):
         if attempt > 0:
-            _time.sleep(1.5)
+            # Progressive backoff: 2s, 3s, 4.5s, ...
+            _time.sleep(2.0 * (1.5 ** (attempt - 1)))
 
         try:
             res = client.post(url, headers=headers, content=body)
