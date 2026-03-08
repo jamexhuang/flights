@@ -3,7 +3,7 @@ import re
 import urllib.parse
 from typing import TYPE_CHECKING
 
-from primp import Client, ConnectionError, Timeout
+from primp import Client, ConnectError, Timeout
 
 from .querying import FlightQuery
 from .parser import MetaList
@@ -288,7 +288,7 @@ def fetch_shopping_results(
 
         try:
             res = client.post(url, headers=headers, content=body)
-        except (Timeout, ConnectionError):
+        except (Timeout, ConnectError):
             if attempt >= max_retries:
                 raise
             continue
