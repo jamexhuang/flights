@@ -1,10 +1,18 @@
-import urllib.parse
 import json
 import re
+import urllib.parse
 from typing import TYPE_CHECKING
-from primp import Client
+
+from primp import Client, ConnectionError, Timeout
+
 from .querying import FlightQuery
 from .parser import MetaList
+
+DEFAULT_RPC_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/145.0.0.0 Safari/537.36"
+)
 
 def _encode_shopping_request(legs: list[FlightQuery], tokens: list[str], seat_val: int = 1) -> str:
     flights_array = []
@@ -216,8 +224,9 @@ def fetch_shopping_results(
     Submits a multicity booking selection request to GetShoppingResults.
     Returns: (list of available selection tokens, price_if_found, raw_response_text, flights_if_found)
 
-    Retries up to ``max_retries`` times when flight parsing returns no results
-    (Google occasionally returns a session-init response instead of flight data).
+    Retries up to ``max_retries`` times when the request times out or flight
+    parsing returns no results (Google occasionally returns a session-init
+    response instead of flight data).
     """
     import time as _time
 
@@ -231,10 +240,7 @@ def fetch_shopping_results(
         "accept": "*/*",
         "accept-language": language,
         "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
-        "user-agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
-        ),
+        "user-agent": DEFAULT_RPC_USER_AGENT,
         "cookie": (
             "CONSENT=YES+cb.20230810-00-p0.en+FX+874; "
             "SOCS=CAISHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
@@ -246,14 +252,23 @@ def fetch_shopping_results(
         seat_val = SEAT_LOOKUP.get(seat.lower(), 1)
     except AttributeError:
         seat_val = 1
-        
+
     body = _encode_shopping_request(legs, tokens, seat_val).encode("utf-8")
+    tokens_found: list[str] = []
+    content = ""
+    flights_found = None
 
     for attempt in range(1 + max_retries):
         if attempt > 0:
             _time.sleep(1.5)
 
-        res = client.post(url, headers=headers, content=body)
+        try:
+            res = client.post(url, headers=headers, content=body)
+        except (Timeout, ConnectionError):
+            if attempt >= max_retries:
+                raise
+            continue
+
         if res.status_code != 200:
             return [], None, "", None
 

@@ -17,6 +17,20 @@ if TYPE_CHECKING:
     from .types import SeatType
 
 URL = "https://www.google.com/travel/flights"
+DEFAULT_IMPERSONATE = "chrome_145"
+DEFAULT_IMPERSONATE_OS = "macos"
+DEFAULT_CLIENT_TIMEOUT = 15.0
+
+
+def _build_default_client(*, proxy: str | None = None) -> Client:
+    return Client(
+        impersonate=DEFAULT_IMPERSONATE,
+        impersonate_os=DEFAULT_IMPERSONATE_OS,
+        referer=True,
+        proxy=proxy,
+        cookie_store=True,
+        timeout=DEFAULT_CLIENT_TIMEOUT,
+    )
 
 
 @overload
@@ -70,13 +84,7 @@ def get_flights(
     # For multi-city, the initial HTML does not contain flight data; we must use the RPC.
     # q.trip == 3 corresponds to multi-city in TRIP_LOOKUP
     if isinstance(q, Query) and q.trip == 3:
-        client = Client(
-            impersonate="chrome_127",
-            impersonate_os="macos",
-            referer=True,
-            proxy=proxy,
-            cookie_store=True,
-        )
+        client = _build_default_client(proxy=proxy)
         if not q._flights:
             raise ValueError("Multi-city search requires flight models. Pass FlightQuery legs into create_query.")
 
@@ -138,13 +146,7 @@ def fetch_flights_html(
         proxy (str, optional): Proxy.
     """
     if integration is None:
-        client = Client(
-            impersonate="chrome_127",
-            impersonate_os="macos",
-            referer=True,
-            proxy=proxy,
-            cookie_store=True,
-        )
+        client = _build_default_client(proxy=proxy)
 
         if isinstance(q, (Query, ReturnQuery)):
             params = q.params()
@@ -338,13 +340,7 @@ def get_flights_multicity_chained(
     if len(flights) < 2:
         raise ValueError("Multi-city chaining requires at least 2 flight legs")
 
-    client = Client(
-        impersonate="chrome_127",
-        impersonate_os="macos",
-        referer=True,
-        proxy=proxy,
-        cookie_store=True,
-    )
+    client = _build_default_client(proxy=proxy)
 
     tokens, price, _, flights_found = fetch_shopping_results(
         client=client,
@@ -368,5 +364,4 @@ def get_flights_multicity_chained(
         ))
 
     return all_legs
-
 
