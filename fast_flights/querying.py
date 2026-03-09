@@ -173,16 +173,29 @@ class ReturnQuery:
 
     base: Query
     tfu: str
+    selected_tfs: str | None = None
+    next_leg_index: int = 1
 
     def params(self) -> dict[str, str]:
         """Create `params` in dictionary form, including the ``tfu`` key."""
         p = self.base.params()
+        if self.selected_tfs:
+            p["tfs"] = self.selected_tfs
         p["tfu"] = self.tfu
         return p
 
     def url(self) -> str:
         """Get the URL for this return-flight query."""
-        return self.base.url() + "&tfu=" + self.tfu
+        return (
+            "https://www.google.com/travel/flights/search?tfs="
+            + (self.selected_tfs or self.base.to_str())
+            + "&hl="
+            + self.base.language
+            + "&curr="
+            + self.base.currency
+            + "&tfu="
+            + self.tfu
+        )
 
     def __repr__(self) -> str:
         return "ReturnQuery(...)"
@@ -198,8 +211,6 @@ def _build_tfu(token: str) -> str:
         Field 2 (LEN): { Field 1 (VARINT): 0 }
         Field 4 (LEN): ""
     """
-    import struct
-
     def _encode_varint(value: int) -> bytes:
         parts = []
         while value > 0x7F:
@@ -221,6 +232,27 @@ def _build_tfu(token: str) -> str:
         + _encode_len(4, b"")
     )
     return b64encode(payload).decode("utf-8")
+
+
+def _extract_selected_tfs(select_data: str | None) -> str | None:
+    """Decode the selected-flight ``tfs`` payload from ``Flights.select_data``."""
+    import json
+
+    if not select_data:
+        return None
+
+    try:
+        decoded = json.loads(select_data)
+    except json.JSONDecodeError:
+        return select_data
+
+    if isinstance(decoded, list) and decoded and isinstance(decoded[0], str):
+        return decoded[0]
+
+    if isinstance(decoded, str):
+        return decoded
+
+    return None
 
 
 def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuery:
@@ -251,9 +283,20 @@ def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuer
         )
 
     tfu = _build_tfu(flight.select_token)
+    selected_tfs = _extract_selected_tfs(flight.select_data)
 
     if isinstance(query, ReturnQuery):
         # Chain: keep the same base Query, just update the tfu token
-        return ReturnQuery(base=query.base, tfu=tfu)
+        return ReturnQuery(
+            base=query.base,
+            tfu=tfu,
+            selected_tfs=selected_tfs,
+            next_leg_index=query.next_leg_index + 1,
+        )
     else:
-        return ReturnQuery(base=query, tfu=tfu)
+        return ReturnQuery(
+            base=query,
+            tfu=tfu,
+            selected_tfs=selected_tfs,
+            next_leg_index=1,
+        )

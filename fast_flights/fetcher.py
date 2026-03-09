@@ -129,8 +129,28 @@ def get_return_flights(
         q: A :class:`ReturnQuery` created by :func:`select_flight`.
         proxy (str, optional): Proxy.
     """
-    html = fetch_flights_html(q, proxy=proxy, integration=integration)
-    return parse(html)
+    expected_leg = _get_expected_return_leg(q)
+    if expected_leg is None:
+        html = fetch_flights_html(q, proxy=proxy, integration=integration)
+        return parse(html)
+
+    try:
+        html = fetch_flights_html(q, proxy=proxy, integration=integration)
+        parsed = parse(html)
+        if _results_match_leg(parsed, expected_leg):
+            return parsed
+    except Exception:
+        pass
+
+    # Google's selected-flight HTML no longer reliably SSRs the reverse leg.
+    # Fall back to an independent one-way query for the requested leg so the
+    # returned segment data matches the user's requested direction.
+    return _get_directional_leg_results(
+        q.base,
+        q.next_leg_index,
+        proxy=proxy,
+        integration=integration,
+    )
 
 
 def fetch_flights_html(
@@ -468,6 +488,83 @@ def get_selected_flight_page(
     )
 
 
+def _query_seat_name(query: Query) -> str:
+    from .querying import SEAT_LOOKUP
+
+    for name, value in SEAT_LOOKUP.items():
+        if value == query.seat:
+            return name
+    return "economy"
+
+
+def _query_passengers(query: Query) -> "Passengers":
+    from .pb.flights_pb2 import Passenger
+    from .querying import Passengers
+
+    counts = {
+        Passenger.ADULT: 0,
+        Passenger.CHILD: 0,
+        Passenger.INFANT_IN_SEAT: 0,
+        Passenger.INFANT_ON_LAP: 0,
+    }
+    for passenger in query.passengers:
+        counts[passenger] = counts.get(passenger, 0) + 1
+
+    return Passengers(
+        adults=counts.get(Passenger.ADULT, 0),
+        children=counts.get(Passenger.CHILD, 0),
+        infants_in_seat=counts.get(Passenger.INFANT_IN_SEAT, 0),
+        infants_on_lap=counts.get(Passenger.INFANT_ON_LAP, 0),
+    )
+
+
+def _get_expected_return_leg(q: ReturnQuery) -> "FlightQuery | None":
+    if not q.base._flights:
+        return None
+    if q.next_leg_index >= len(q.base._flights):
+        return None
+    return q.base._flights[q.next_leg_index]
+
+
+def _results_match_leg(results: MetaList, leg: "FlightQuery") -> bool:
+    if not results:
+        return False
+    first = results[0]
+    if not first.flights:
+        return False
+    first_segment = first.flights[0]
+    last_segment = first.flights[-1]
+    return (
+        first_segment.from_airport.code == leg.from_airport
+        and last_segment.to_airport.code == leg.to_airport
+    )
+
+
+def _get_directional_leg_results(
+    base: Query,
+    leg_index: int,
+    *,
+    proxy: str | None = None,
+    integration: Integration | None = None,
+) -> MetaList:
+    from .querying import create_query
+
+    if not base._flights:
+        raise ValueError("Directional fallback requires original flight legs on the base query.")
+    if leg_index >= len(base._flights):
+        raise ValueError(f"Leg index {leg_index} is out of range for this query.")
+
+    one_way_query = create_query(
+        flights=[base._flights[leg_index]],
+        trip="one-way",
+        seat=_query_seat_name(base),
+        passengers=_query_passengers(base),
+        language=base.language,
+        currency=base.currency,
+    )
+    return get_flights(one_way_query, proxy=proxy, integration=integration)
+
+
 def get_flights_multicity_chained(
     flights: "list[FlightQuery]",
     *,
@@ -479,23 +576,24 @@ def get_flights_multicity_chained(
 ) -> list[MulticityLegChained]:
     """Search a multi-city itinerary and return available options with total trip prices.
 
-    Each response from Google already contains the full list of first-leg flight options,
-    each priced as the total cost of the entire multi-city trip. A single API call is
-    therefore sufficient; this function makes that call (with automatic retry on transient
-    failures) and returns the result wrapped in the :class:`MulticityLegChained` structure.
+    Google still exposes bundled total itinerary pricing via the multi-city RPC,
+    but later-leg HTML chaining no longer yields correctly directed segment data.
+    This function therefore combines:
+
+    * one multi-city RPC call for the bundled ``total_price``
+    * one independent one-way search per leg for correctly directed ``flights``
 
     Returns:
         A list of :class:`MulticityLegChained`, one per input leg.
-        All entries share the same ``flights`` and ``total_price`` from the first
-        successful response.  ``flights`` contains the available first-leg options,
-        each with a ``price`` reflecting the entire trip cost.
+        All entries share the same bundled ``total_price``.
+        Each entry's ``flights`` contains the correctly directed options for that leg.
     """
     if len(flights) < 2:
         raise ValueError("Multi-city chaining requires at least 2 flight legs")
 
     client = _build_default_client(proxy=proxy)
 
-    tokens, price, _, flights_found = fetch_shopping_results(
+    tokens, price, _, _ = fetch_shopping_results(
         client=client,
         legs=flights,
         tokens=[],
@@ -504,8 +602,18 @@ def get_flights_multicity_chained(
         seat=seat,
     )
 
+    directional_legs = get_flights_multicity(
+        flights,
+        seat=seat,
+        language=language,
+        currency=currency,
+        proxy=proxy,
+        delay=delay,
+    )
+
     all_legs: list[MulticityLegChained] = []
     for i, leg in enumerate(flights):
+        leg_results = directional_legs[i].results if i < len(directional_legs) else None
         all_legs.append(MulticityLegChained(
             leg_index=i,
             from_airport=leg.from_airport,
@@ -513,7 +621,7 @@ def get_flights_multicity_chained(
             date=leg.date if isinstance(leg.date, str) else leg.date.strftime("%Y-%m-%d"),
             tokens=tokens,
             total_price=price,
-            flights=flights_found,
+            flights=leg_results,
         ))
 
     return all_legs

@@ -4,7 +4,7 @@
 
 ## Workflow 1: `get_flights_multicity_chained()`
 
-Use this when you want Google's bundled multi-city pricing in one RPC call.
+Use this when you want Google's bundled multi-city pricing plus correctly directed parsed options for each requested leg.
 
 ```python
 from fast_flights import FlightQuery, get_flights_multicity_chained
@@ -31,11 +31,15 @@ print(len(result[0].flights))
 - A `list[MulticityLegChained]`
 - One entry per requested leg
 - Shared `total_price` across all entries
-- Shared `flights` object containing first-leg options only
+- Directionally correct `flights` results for each leg
 
 ### Important limitation
 
-The `flights` field contains first-leg options only. Google encodes later-leg combinations inside the RPC response, but this library does not expose later legs as separate `get_return_flights()` pages.
+`total_price` comes from Google's bundled multi-city RPC response.
+
+The per-leg `flights` field is populated with independent one-way searches for each leg because Google no longer exposes later-leg bundled directionally correct HTML through the old chaining path.
+
+That means later-leg `Flights.price` values are per-leg one-way prices, while `total_price` is the full bundled itinerary price.
 
 ## Workflow 2: `get_flights_multicity()`
 

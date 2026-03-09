@@ -52,6 +52,12 @@ Raises `ValueError` if the chosen result has no `select_token`.
 
 Returns the same parsed `Flights` model as `get_flights()`.
 
+When Google serves the selected page with the correct reverse-direction SSR payload, those parsed results are returned directly.
+
+When Google still responds with outbound-direction HTML, `get_return_flights()` falls back to an independent one-way search for the requested return leg so the returned route direction is still correct.
+
+In that fallback mode, `Flights.price` is the one-way price for the return leg rather than Google's selected round-trip total.
+
 ## Integrations
 
 Round-trip return searches work with integrations:

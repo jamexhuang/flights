@@ -100,12 +100,22 @@ class SeatRegressionTests(unittest.TestCase):
                         "fast_flights.fetcher.fetch_shopping_results",
                         side_effect=make_fake_fetch(seat),
                     ):
-                        results = get_flights_multicity_chained(
-                            self.multi_city,
-                            seat=seat,
-                            language="en-US",
-                            currency="USD",
-                        )
+                        with patch("fast_flights.fetcher.get_flights_multicity") as per_leg:
+                            per_leg.return_value = []
+                            results = get_flights_multicity_chained(
+                                self.multi_city,
+                                seat=seat,
+                                language="en-US",
+                                currency="USD",
+                            )
+                per_leg.assert_called_once_with(
+                    self.multi_city,
+                    seat=seat,
+                    language="en-US",
+                    currency="USD",
+                    proxy=None,
+                    delay=1.0,
+                )
                 self.assertEqual(len(results), len(self.multi_city))
                 self.assertEqual(results[0].tokens, ["token"])
                 self.assertEqual(results[0].total_price, 999)

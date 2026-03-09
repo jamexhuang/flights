@@ -90,13 +90,17 @@ returning = get_return_flights(return_query)
 
 Each outbound result carries a hidden `select_token`. `select_flight()` wraps that token into a `ReturnQuery`.
 
+`get_return_flights()` now prefers Google's selected-flight `tfs` payload when available and verifies that the returned itinerary direction matches the requested return leg. If Google still serves the outbound-direction HTML, the library falls back to an independent one-way query for the return leg so the parsed route is still correct.
+
+In that fallback mode, the returned `Flights.price` values are per-leg one-way prices rather than Google's selected round-trip total.
+
 ## Multi-city searches
 
 There are three supported multi-city workflows.
 
-### 1. Total trip price + first-leg options
+### 1. Total trip price + directional per-leg options
 
-Use `get_flights_multicity_chained()` when you want Google's bundled multi-city pricing in one RPC call.
+Use `get_flights_multicity_chained()` when you want Google's bundled multi-city pricing plus correctly directed parsed options for each leg.
 
 ```python
 from fast_flights import FlightQuery, get_flights_multicity_chained
@@ -115,8 +119,10 @@ result = get_flights_multicity_chained(
 )
 
 print(result[0].total_price)
-print(len(result[0].flights))  # first-leg options only
+print(result[1].flights[0].flights[-1].to_airport.code)  # per-leg directional results
 ```
+
+`total_price` is Google's bundled multi-city price from the RPC response. The per-leg `flights` lists are populated with independent one-way searches for each leg so the parsed routes always match the requested leg direction. That means later-leg `Flights.price` values are per-leg one-way prices, not re-priced bundled totals.
 
 ### 2. Per-leg flight details
 
@@ -142,7 +148,7 @@ This returns per-leg one-way pricing, not Google's bundled total trip price.
 
 ### 3. Hybrid workflow
 
-Use `get_flights(create_query(..., trip="multi-city"))` for the first-leg bundled options, then `get_flights_multicity()` for detailed options on legs 2+.
+Use `get_flights(create_query(..., trip="multi-city"))` for Google's bundled first-leg options, then `get_flights_multicity()` for detailed options on legs 2+.
 
 ```python
 from fast_flights import (
@@ -193,7 +199,7 @@ print(selected.bl)
 print(selected.data_service_requests["ds:1"].rpc_id)
 ```
 
-For multi-city searches, this gives you the real Google Flights selected page plus the client-side data-service requests embedded in that page. Later-leg bundled options are still not exposed as parsed `Flights` objects by this library.
+For multi-city searches, this gives you the real Google Flights selected page plus the client-side data-service requests embedded in that page. Google still does not expose later-leg bundled options as parsed `Flights` objects through this library's public API.
 
 The round-trip return-flight API is not the supported way to fetch legs 2+ for multi-city itineraries. Google's HTML response for that path does not provide the required data.
 
