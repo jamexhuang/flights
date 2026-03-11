@@ -67,7 +67,8 @@ class Issue1RegressionTests(unittest.TestCase):
         self.assertEqual(selected.next_leg_index, 1)
         self.assertEqual(selected.selection_tokens, ("selected-token",))
         self.assertEqual(len(selected.selected_legs), 1)
-        self.assertIn("tfs=selected-tfs", selected.url())
+        # URL should now automatically rebuild the booking tfs format for portability
+        self.assertIn("tfs=CBwQAho_EgoyMDI2LTA1LTAxIh8KA1RQRRIKMjAyNi0wNS0wMRoDTlJUKgJUUzIDMTIzagcIARIDVFBFcgcIARIDTlJUGh4SCjIwMjYtMDUtMDhqBwgBEgNOUlRyBwgBEgNUUEVAAUgBcAGCAQsI____________AZgBAQ", selected.url())
         self.assertIn("tfu=", selected.url())
 
     def test_select_flight_increments_leg_index_when_chaining(self):

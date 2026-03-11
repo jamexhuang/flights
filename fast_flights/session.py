@@ -87,8 +87,8 @@ class SearchSession:
 
     @property
     def current_search_tfs(self) -> str:
-        if self.return_query is not None and self.return_query.selected_tfs:
-            return self.return_query.selected_tfs
+        if self.return_query is not None:
+            return build_booking_tfs(self.query, self.selected_legs) or self.return_query.selected_tfs or self.query.to_str()
         return self.query.to_str()
 
     @property

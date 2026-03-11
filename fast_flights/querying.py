@@ -193,16 +193,20 @@ class ReturnQuery:
     def params(self) -> dict[str, str]:
         """Create `params` in dictionary form, including the ``tfu`` key."""
         p = self.base.params()
-        if self.selected_tfs:
-            p["tfs"] = self.selected_tfs
+        # Use a fully rebuilt booking tfs string if possible so the URL is shareable
+        # across sessions. Fall back to the raw selected_tfs if rebuilding fails.
+        tfs = build_booking_tfs(self.base, self.selected_legs) or self.selected_tfs
+        if tfs:
+            p["tfs"] = tfs
         p["tfu"] = self.tfu
         return p
 
     def url(self) -> str:
         """Get the URL for this return-flight query."""
+        tfs = build_booking_tfs(self.base, self.selected_legs) or self.selected_tfs or self.base.to_str()
         return (
             "https://www.google.com/travel/flights/search?tfs="
-            + (self.selected_tfs or self.base.to_str())
+            + tfs
             + "&hl="
             + self.base.language
             + "&curr="
