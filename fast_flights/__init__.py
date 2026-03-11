@@ -1,12 +1,20 @@
 from . import integrations
-
+from .browser import (
+    BrowserArtifacts,
+    BrowserCapture,
+    BrowserProvider,
+    PlaywrightBrowserProvider,
+    capture_browser_artifacts,
+)
 from .querying import (
     FlightQuery,
     Query,
     ReturnQuery,
     Passengers,
+    build_booking_tfs,
+    build_booking_url,
     create_query,
-    create_query as create_filter,  # alias
+    create_query as create_filter,
     select_flight,
 )
 from .fetcher import (
@@ -21,15 +29,24 @@ from .fetcher import (
     MulticityLegChained,
     SelectedFlightPage,
 )
+from .session import SearchSession
 
 __all__ = [
+    "BrowserArtifacts",
+    "BrowserCapture",
+    "BrowserProvider",
+    "PlaywrightBrowserProvider",
+    "capture_browser_artifacts",
     "FlightQuery",
     "Query",
     "ReturnQuery",
     "Passengers",
+    "build_booking_tfs",
+    "build_booking_url",
     "create_query",
     "create_filter",
     "select_flight",
+    "SearchSession",
     "get_flights",
     "get_return_flights",
     "get_flights_multicity",

@@ -45,11 +45,15 @@ The supported top-level API is the set exported from `fast_flights`:
 - `FlightQuery`
 - `Passengers`
 - `create_query()` and `create_filter()` (`create_filter` is a compatibility alias)
+- `SearchSession`
+- `build_booking_tfs()` / `build_booking_url()`
 - `get_flights()`
 - `select_flight()`
 - `get_return_flights()`
 - `get_flights_multicity()`
 - `get_flights_multicity_chained()`
+- `get_selected_flight_page()`
+- `PlaywrightBrowserProvider` (experimental)
 - `fetch_flights_html()`
 
 Use IATA airport codes like `"TPE"`, `"NRT"`, or `"JFK"` in `FlightQuery`. The repository does not currently export a public airport search helper.
@@ -90,9 +94,81 @@ returning = get_return_flights(return_query)
 
 Each outbound result carries a hidden `select_token`. `select_flight()` wraps that token into a `ReturnQuery`.
 
-`get_return_flights()` now prefers Google's selected-flight `tfs` payload when available and verifies that the returned itinerary direction matches the requested return leg. If Google still serves the outbound-direction HTML, the library falls back to an independent one-way query for the return leg so the parsed route is still correct.
+`get_return_flights()` first tries Google's selected-flight HTML and verifies that the returned itinerary direction matches the requested return leg. If Google still serves the wrong payload there, the library rebuilds the browser-style selected `tfs` state from the chosen outbound segments and fetches the bundled return page again.
 
-In that fallback mode, the returned `Flights.price` values are per-leg one-way prices rather than Google's selected round-trip total.
+Only if both HTML paths fail does the library fall back to an independent one-way query for the requested return leg. In that last-resort mode, the returned `Flights.price` values are per-leg one-way prices rather than Google's selected round-trip total.
+
+### Session workflow
+
+Use `SearchSession` when you want one API for chained search state, current search links, and the final booking link:
+
+```python
+from fast_flights import FlightQuery, Passengers, SearchSession, create_query
+
+query = create_query(
+    flights=[
+        FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="NRT"),
+        FlightQuery(date="2026-04-05", from_airport="NRT", to_airport="TPE"),
+    ],
+    trip="round-trip",
+    seat="economy",
+    passengers=Passengers(adults=1),
+    language="en-US",
+    currency="USD",
+)
+
+session = SearchSession(query, mode="rpc-first")
+outbound = session.results()
+session = session.select(outbound[0])
+returning = session.results()
+session = session.select(returning[0])
+
+print(session.current_search_tfs)   # selected-page / search-state tfs
+print(session.final_booking_tfs)    # final booking itinerary tfs
+print(session.booking_url())        # https://www.google.com/travel/flights/booking?...
+```
+
+`build_booking_tfs()` and `build_booking_url()` expose the same final booking-state builder directly if you already have `selected_legs`.
+
+### Experimental browser parity
+
+If later-leg results do not match what Google shows in a real browser, you can let `SearchSession` fall back to a browser-captured shopping response:
+
+```python
+from fast_flights import (
+    FlightQuery,
+    Passengers,
+    PlaywrightBrowserProvider,
+    SearchSession,
+    create_query,
+)
+
+query = create_query(
+    flights=[
+        FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="LHR"),
+        FlightQuery(date="2026-04-14", from_airport="LHR", to_airport="TPE"),
+    ],
+    trip="round-trip",
+    seat="economy",
+    passengers=Passengers(adults=1),
+    language="en-GB",
+    currency="GBP",
+)
+
+session = SearchSession(
+    query,
+    mode="rpc-first",
+    browser_fallback=True,
+    browser_provider=PlaywrightBrowserProvider(),
+)
+```
+
+This path is experimental and only applies to later legs. The normal order stays:
+
+- `rpc-first`: shopping RPC -> selected/bundled HTML -> browser capture -> directional fallback
+- `ssr-first`: selected/bundled HTML -> shopping RPC -> browser capture -> directional fallback
+
+The browser provider captures the real `GetShoppingResults` response and feeds that response into the existing parser. It does not replay the request body in v1.
 
 ## Multi-city searches
 
@@ -205,7 +281,7 @@ The round-trip return-flight API is not the supported way to fetch legs 2+ for m
 
 ## Integrations and proxies
 
-Fetching customization is done with `integration=` and `proxy=`. The current public API does not expose legacy fetch flags or a packaged local-browser mode.
+Fetching customization is split between `integration=` for HTML fetches and `browser_provider=` for experimental browser-assisted parity in `SearchSession`.
 
 ### Bright Data
 
@@ -228,6 +304,20 @@ from fast_flights.integrations.base import Integration
 class MyIntegration(Integration):
     def fetch_html(self, q):
         return "...html..."
+```
+
+### Browser providers
+
+Browser providers are separate from integrations. They do not replace `fetch_html()`. They only provide an optional network-capture fallback for chained `SearchSession` searches.
+
+```python
+from fast_flights import PlaywrightBrowserProvider, SearchSession
+
+session = SearchSession(
+    query,
+    browser_fallback=True,
+    browser_provider=PlaywrightBrowserProvider(),
+)
 ```
 
 ### Proxy support

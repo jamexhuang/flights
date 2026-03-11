@@ -8,7 +8,7 @@ from primp import Client
 
 from .integrations.base import Integration
 from .parser import MetaList, parse
-from .querying import Query, ReturnQuery
+from .querying import Query, ReturnQuery, build_booking_tfs
 from .shopping import fetch_shopping_results
 
 if TYPE_CHECKING:
@@ -131,26 +131,96 @@ def get_return_flights(
     """
     expected_leg = _get_expected_return_leg(q)
     if expected_leg is None:
-        html = fetch_flights_html(q, proxy=proxy, integration=integration)
-        return parse(html)
+        return parse(fetch_flights_html(q, proxy=proxy, integration=integration))
 
-    try:
-        html = fetch_flights_html(q, proxy=proxy, integration=integration)
-        parsed = parse(html)
-        if _results_match_leg(parsed, expected_leg):
-            return parsed
-    except Exception:
-        pass
+    selected_results = _get_selected_html_results(
+        q,
+        expected_leg,
+        proxy=proxy,
+        integration=integration,
+    )
+    if selected_results is not None:
+        return selected_results
 
-    # Google's selected-flight HTML no longer reliably SSRs the reverse leg.
-    # Fall back to an independent one-way query for the requested leg so the
-    # returned segment data matches the user's requested direction.
+    bundled_results = None
+    if integration is None:
+        bundled_results = _get_bundled_leg_results(q, proxy=proxy)
+        if bundled_results is not None:
+            return bundled_results
+
+    # Google's selected-flight HTML no longer reliably SSRs the reverse leg,
+    # but replaying the browser-style selected ``tfs`` can also fail if the
+    # selected itinerary metadata is incomplete. Fall back to an independent
+    # one-way query so the returned segment data still matches the requested
+    # direction.
     return _get_directional_leg_results(
         q.base,
         q.next_leg_index,
         proxy=proxy,
         integration=integration,
     )
+
+
+def _get_selected_html_results(
+    q: ReturnQuery,
+    expected_leg: "FlightQuery",
+    *,
+    proxy: str | None = None,
+    integration: Integration | None = None,
+) -> MetaList | None:
+    try:
+        parsed = parse(fetch_flights_html(q, proxy=proxy, integration=integration))
+    except Exception:
+        return None
+
+    if _results_match_leg(parsed, expected_leg):
+        return parsed
+    return None
+
+
+def _get_bundled_leg_results(
+    q: ReturnQuery,
+    *,
+    proxy: str | None = None,
+) -> MetaList | None:
+    expected_leg = _get_expected_return_leg(q)
+    if expected_leg is None:
+        return None
+    if q.next_leg_index != 1:
+        return None
+    if not q.base._flights or not q.selection_tokens or not q.selected_legs:
+        return None
+    selected_segments = q.selected_legs[0]
+    if not selected_segments:
+        return None
+
+    selected_tfs = build_booking_tfs(q.base, q.selected_legs)
+    if not selected_tfs:
+        return None
+
+    try:
+        client = _build_default_client(proxy=proxy)
+        res = client.get(
+            URL,
+            params={
+                "tfs": selected_tfs,
+                "hl": q.base.language,
+                "curr": q.base.currency,
+            },
+            headers={
+                "cookie": "CONSENT=YES+cb.20230810-00-p0.en+FX+874; SOCS=CAISHAgCEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
+            },
+        )
+        if res.status_code != 200:
+            return None
+        flights_found = parse(res.text)
+    except Exception:
+        return None
+
+    if flights_found and _results_match_leg(flights_found, expected_leg):
+        return flights_found
+
+    return None
 
 
 def fetch_flights_html(

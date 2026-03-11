@@ -4,6 +4,7 @@ from unittest.mock import patch
 from fast_flights import FlightQuery, Passengers, create_query, select_flight
 from fast_flights.fetcher import MulticityLeg, get_flights_multicity_chained, get_return_flights
 from fast_flights.model import CarbonEmission, Flights, Airport, SimpleDatetime, SingleFlight
+from fast_flights.querying import build_selected_tfs
 from fast_flights.parser import MetaList
 
 
@@ -16,6 +17,7 @@ def _segment(frm: str, to: str) -> SingleFlight:
         duration=180,
         plane_type="Test Plane",
         airline_code="TS",
+        flight_number="123",
     )
 
 
@@ -63,6 +65,8 @@ class Issue1RegressionTests(unittest.TestCase):
 
         self.assertEqual(selected.selected_tfs, "selected-tfs")
         self.assertEqual(selected.next_leg_index, 1)
+        self.assertEqual(selected.selection_tokens, ("selected-token",))
+        self.assertEqual(len(selected.selected_legs), 1)
         self.assertIn("tfs=selected-tfs", selected.url())
         self.assertIn("tfu=", selected.url())
 
@@ -71,6 +75,18 @@ class Issue1RegressionTests(unittest.TestCase):
         chained = select_flight(selected, self.outbound_flight)
 
         self.assertEqual(chained.next_leg_index, 2)
+        self.assertEqual(chained.selection_tokens, ("selected-token", "selected-token"))
+        self.assertEqual(len(chained.selected_legs), 2)
+
+    def test_build_selected_tfs_replays_selected_outbound_segments(self):
+        selected = select_flight(self.roundtrip_query, self.outbound_flight)
+
+        actual = build_selected_tfs(self.roundtrip_query, selected.selected_legs)
+
+        self.assertEqual(
+            actual,
+            "CBwQAho_EgoyMDI2LTA1LTAxIh8KA1RQRRIKMjAyNi0wNS0wMRoDTlJUKgJUUzIDMTIzagcIARIDVFBFcgcIARIDTlJUGh4SCjIwMjYtMDUtMDhqBwgBEgNOUlRyBwgBEgNUUEVAAUgBcAGCAQsI____________AZgBAQ",
+        )
 
     def test_get_return_flights_uses_ssr_results_when_direction_matches(self):
         selected = select_flight(self.roundtrip_query, self.outbound_flight)
@@ -84,15 +100,31 @@ class Issue1RegressionTests(unittest.TestCase):
         self.assertIs(actual, correct_results)
         fallback.assert_not_called()
 
-    def test_get_return_flights_falls_back_to_directional_one_way_results(self):
+    def test_get_return_flights_prefers_bundled_results_before_directional_one_way_fallback(self):
+        selected = select_flight(self.roundtrip_query, self.outbound_flight)
+        wrong_results = _results("TPE", "NRT", price=1000)
+        bundled_results = _results("NRT", "TPE", price=1799)
+
+        with patch("fast_flights.fetcher.fetch_flights_html", return_value="<html/>"):
+            with patch("fast_flights.fetcher.parse", return_value=wrong_results):
+                with patch("fast_flights.fetcher._get_bundled_leg_results", return_value=bundled_results) as bundled:
+                    with patch("fast_flights.fetcher.get_flights") as fallback:
+                        actual = get_return_flights(selected)
+
+        self.assertIs(actual, bundled_results)
+        fallback.assert_not_called()
+        bundled.assert_called_once()
+
+    def test_get_return_flights_falls_back_to_directional_one_way_results_when_bundled_replay_has_no_match(self):
         selected = select_flight(self.roundtrip_query, self.outbound_flight)
         wrong_results = _results("TPE", "NRT", price=1000)
         fallback_results = _results("NRT", "TPE", price=1200)
 
         with patch("fast_flights.fetcher.fetch_flights_html", return_value="<html/>"):
             with patch("fast_flights.fetcher.parse", return_value=wrong_results):
-                with patch("fast_flights.fetcher.get_flights", return_value=fallback_results) as fallback:
-                    actual = get_return_flights(selected)
+                with patch("fast_flights.fetcher._get_bundled_leg_results", return_value=None):
+                    with patch("fast_flights.fetcher.get_flights", return_value=fallback_results) as fallback:
+                        actual = get_return_flights(selected)
 
         self.assertIs(actual, fallback_results)
         fallback_query = fallback.call_args.args[0]

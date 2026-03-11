@@ -2,6 +2,7 @@ from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime as Datetime
 from typing import Literal, Optional, Union
+from urllib.parse import urlencode
 
 from .pb.flights_pb2 import Airport, FlightData, Info, Passenger, Seat, Trip
 from .types import Currency, Language, SeatType, TripType
@@ -56,6 +57,15 @@ class Query:
 
     def __repr__(self) -> str:
         return "Query(...)"
+
+
+@dataclass(frozen=True)
+class SelectedSegment:
+    from_airport: str
+    departure_date: str
+    to_airport: str
+    airline_code: str
+    flight_number: str
 
 
 @dataclass
@@ -169,12 +179,16 @@ class ReturnQuery:
 
     Wraps the original :class:`Query` with the ``tfu`` session token
     extracted from a selected :class:`~fast_flights.model.Flights` result.
+    The raw selection context is also retained so return searches can
+    rebuild Google's bundled selected-itinerary state when needed.
     """
 
     base: Query
     tfu: str
     selected_tfs: str | None = None
     next_leg_index: int = 1
+    selection_tokens: tuple[str, ...] = ()
+    selected_legs: tuple[tuple[SelectedSegment, ...], ...] = ()
 
     def params(self) -> dict[str, str]:
         """Create `params` in dictionary form, including the ``tfu`` key."""
@@ -255,6 +269,138 @@ def _extract_selected_tfs(select_data: str | None) -> str | None:
     return None
 
 
+def _format_segment_date(date: tuple[int, int, int] | list[int]) -> str:
+    year, month, day = date
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _encode_varint(value: int) -> bytes:
+    parts = []
+    while value > 0x7F:
+        parts.append((value & 0x7F) | 0x80)
+        value >>= 7
+    parts.append(value & 0x7F)
+    return bytes(parts)
+
+
+def _encode_len(field_number: int, data: bytes) -> bytes:
+    return _encode_varint((field_number << 3) | 2) + _encode_varint(len(data)) + data
+
+
+def _encode_field_varint(field_number: int, value: int) -> bytes:
+    return _encode_varint((field_number << 3) | 0) + _encode_varint(value)
+
+
+def _encode_selected_airport(code: str) -> bytes:
+    return _encode_field_varint(1, 1) + _encode_len(2, code.encode("utf-8"))
+
+
+def _encode_selected_segment(segment: SelectedSegment) -> bytes:
+    return b"".join(
+        (
+            _encode_len(1, segment.from_airport.encode("utf-8")),
+            _encode_len(2, segment.departure_date.encode("utf-8")),
+            _encode_len(3, segment.to_airport.encode("utf-8")),
+            _encode_len(5, segment.airline_code.encode("utf-8")),
+            _encode_len(6, segment.flight_number.encode("utf-8")),
+        )
+    )
+
+
+def _encode_selected_leg(
+    flight: FlightQuery,
+    selected_segments: tuple[SelectedSegment, ...] = (),
+) -> bytes:
+    date = flight.date if isinstance(flight.date, str) else flight.date.strftime("%Y-%m-%d")
+    leg = _encode_len(2, date.encode("utf-8"))
+    for segment in selected_segments:
+        leg += _encode_len(4, _encode_selected_segment(segment))
+    leg += _encode_len(13, _encode_selected_airport(flight.from_airport))
+    leg += _encode_len(14, _encode_selected_airport(flight.to_airport))
+    return leg
+
+
+def _selected_tfs_max_stops(base: Query) -> int:
+    if not base._flights:
+        return (1 << 64) - 1
+    stops = [flight.max_stops for flight in base._flights if flight.max_stops is not None]
+    if not stops:
+        return (1 << 64) - 1
+    return max(stops)
+
+
+def build_booking_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, ...], ...]) -> str | None:
+    if not query._flights:
+        return None
+    if not selected_legs:
+        return None
+
+    payload = b"".join(
+        (
+            _encode_field_varint(1, 28),
+            _encode_field_varint(2, 2),
+            *(
+                _encode_len(
+                    3,
+                    _encode_selected_leg(
+                        flight,
+                        selected_legs[idx] if idx < len(selected_legs) else (),
+                    ),
+                )
+                for idx, flight in enumerate(query._flights)
+            ),
+            _encode_field_varint(8, 1),
+            _encode_field_varint(9, 1),
+            _encode_field_varint(14, 1),
+            _encode_len(16, _encode_field_varint(1, _selected_tfs_max_stops(query))),
+            _encode_field_varint(19, 1),
+        )
+    )
+    return b64encode(payload, altchars=b"-_").decode("utf-8").rstrip("=")
+
+
+def build_selected_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, ...], ...]) -> str | None:
+    """Backward-compatible alias for :func:`build_booking_tfs`."""
+    return build_booking_tfs(query, selected_legs)
+
+
+def build_booking_url(
+    query: Query,
+    selected_legs: tuple[tuple[SelectedSegment, ...], ...],
+    *,
+    language: str | None = None,
+    currency: str | None = None,
+) -> str | None:
+    booking_tfs = build_booking_tfs(query, selected_legs)
+    if not booking_tfs:
+        return None
+    params = urlencode(
+        {
+            "tfs": booking_tfs,
+            "hl": query.language if language is None else language,
+            "curr": query.currency if currency is None else currency,
+        }
+    )
+    return f"https://www.google.com/travel/flights/booking?{params}"
+
+
+def _extract_selected_leg(flight: "Flights") -> tuple[SelectedSegment, ...]:
+    segments: list[SelectedSegment] = []
+    for segment in flight.flights:
+        if not segment.airline_code or not segment.flight_number:
+            return ()
+        segments.append(
+            SelectedSegment(
+                from_airport=segment.from_airport.code,
+                departure_date=_format_segment_date(segment.departure.date),
+                to_airport=segment.to_airport.code,
+                airline_code=segment.airline_code,
+                flight_number=segment.flight_number,
+            )
+        )
+    return tuple(segments)
+
+
 def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuery:
     """Build a :class:`ReturnQuery` for fetching the next leg's options.
 
@@ -286,12 +432,16 @@ def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuer
     selected_tfs = _extract_selected_tfs(flight.select_data)
 
     if isinstance(query, ReturnQuery):
+        selection_tokens = (*query.selection_tokens, flight.select_token)
+        selected_legs = (*query.selected_legs, _extract_selected_leg(flight))
         # Chain: keep the same base Query, just update the tfu token
         return ReturnQuery(
             base=query.base,
             tfu=tfu,
             selected_tfs=selected_tfs,
             next_leg_index=query.next_leg_index + 1,
+            selection_tokens=selection_tokens,
+            selected_legs=selected_legs,
         )
     else:
         return ReturnQuery(
@@ -299,4 +449,6 @@ def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuer
             tfu=tfu,
             selected_tfs=selected_tfs,
             next_leg_index=1,
+            selection_tokens=(flight.select_token,),
+            selected_legs=(_extract_selected_leg(flight),),
         )

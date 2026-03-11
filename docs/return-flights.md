@@ -54,9 +54,43 @@ Returns the same parsed `Flights` model as `get_flights()`.
 
 When Google serves the selected page with the correct reverse-direction SSR payload, those parsed results are returned directly.
 
-When Google still responds with outbound-direction HTML, `get_return_flights()` falls back to an independent one-way search for the requested return leg so the returned route direction is still correct.
+When Google still responds with the wrong selected-flight HTML payload, `get_return_flights()` next rebuilds the browser-style selected `tfs` state from the chosen outbound segments and fetches that bundled return page directly.
 
-In that fallback mode, `Flights.price` is the one-way price for the return leg rather than Google's selected round-trip total.
+Only if both HTML paths fail does it fall back to an independent one-way search for the requested return leg so the returned route direction is still correct.
+
+In that last-resort mode, `Flights.price` is the one-way price for the return leg rather than Google's selected round-trip total.
+
+## Experimental browser parity
+
+`get_return_flights()` keeps the stable built-in HTTP/HTML fallback chain above.
+
+If you need an additional browser-assisted fallback for later legs, use `SearchSession` with `browser_fallback=True` and a `browser_provider`:
+
+```python
+from fast_flights import (
+    PlaywrightBrowserProvider,
+    SearchSession,
+)
+
+session = SearchSession(
+    query,
+    mode="rpc-first",
+    browser_fallback=True,
+    browser_provider=PlaywrightBrowserProvider(),
+)
+
+outbound = session.results()
+session = session.select(outbound[0])
+returning = session.results()
+```
+
+That browser path is experimental. It captures the real browser `GetShoppingResults` response for the next leg and parses that response directly.
+
+## Search state vs booking state
+
+`select_flight()` and the selected-page flow expose Google's search-state `tfs` for the next leg.
+
+If you need the final selected-itinerary payload for a Google Flights booking URL, use `build_booking_tfs()` / `build_booking_url()` or `SearchSession.final_booking_tfs` / `SearchSession.booking_url()` after all legs are selected.
 
 ## Integrations
 
@@ -70,6 +104,8 @@ outbound = get_flights(query, integration=integration)
 return_query = select_flight(query, outbound[0])
 returning = get_return_flights(return_query, integration=integration)
 ```
+
+Custom integrations are used for the primary HTML fetch path. The rebuilt selected-`tfs` fallback currently uses the built-in client, so if your integration is required to reach Google at all, the final fallback may still be the directional one-way search.
 
 ## Boundary with multi-city
 

@@ -1,6 +1,10 @@
 # Integrations & Proxies
 
-The current API customizes fetching with `integration=` and `proxy=`. It does not expose legacy fetch flags or a packaged local-browser mode.
+The current API customizes fetching with:
+
+- `integration=` for HTML fetching
+- `proxy=` for the built-in HTTP client
+- `browser_provider=` for experimental browser-assisted parity in `SearchSession`
 
 ## Built-in HTTP fetching
 
@@ -57,6 +61,20 @@ Then pass it into `get_flights()` or `get_return_flights()`:
 
 ```python
 results = get_flights(query, integration=MyIntegration())
+```
+
+## Experimental browser providers
+
+Browser providers are separate from integrations. They do not replace `fetch_html()`. They provide an optional later-leg fallback for `SearchSession` by capturing the real browser `GetShoppingResults` response.
+
+```python
+from fast_flights import PlaywrightBrowserProvider, SearchSession
+
+session = SearchSession(
+    query,
+    browser_fallback=True,
+    browser_provider=PlaywrightBrowserProvider(),
+)
 ```
 
 ## Multi-city RPC limitation

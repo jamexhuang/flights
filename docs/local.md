@@ -1,19 +1,66 @@
-# Custom Integrations
+# Browser Providers and Custom Integrations
 
-If you need browser-rendered HTML or a custom local fetch stack, build your own `Integration`.
+`faster-flights` now has two separate extension points:
 
-## Important boundary
+- `integration=`: custom HTML fetching
+- `browser_provider=`: experimental browser-side network capture for `SearchSession`
 
-`faster-flights` does not ship a built-in local fetch flag or Playwright mode in the current public API.
+They solve different problems and are not interchangeable.
 
-The optional extra below only installs Playwright so you can use it in your own integration code:
+## Install Playwright
+
+The optional extra installs Playwright so you can use the built-in experimental browser provider:
 
 ```bash
 pip install faster-flights[local]
 python -m playwright install chromium
 ```
 
-## Minimal integration skeleton
+## Experimental browser provider
+
+Use `PlaywrightBrowserProvider` when you want `SearchSession` to fall back to a real browser response for later legs.
+
+```python
+from fast_flights import (
+    FlightQuery,
+    Passengers,
+    PlaywrightBrowserProvider,
+    SearchSession,
+    create_query,
+)
+
+query = create_query(
+    flights=[
+        FlightQuery(date="2026-03-31", from_airport="TPE", to_airport="LHR"),
+        FlightQuery(date="2026-04-14", from_airport="LHR", to_airport="TPE"),
+    ],
+    trip="round-trip",
+    seat="economy",
+    passengers=Passengers(adults=1),
+    language="en-GB",
+    currency="GBP",
+)
+
+session = SearchSession(
+    query,
+    mode="rpc-first",
+    browser_fallback=True,
+    browser_provider=PlaywrightBrowserProvider(),
+)
+```
+
+The current MVP is response-first:
+
+- it captures the real `GetShoppingResults` response from Chromium
+- it parses that response directly
+- it does not replay the captured request body yet
+- it does not inject captured cookies back into the HTTP client yet
+
+The browser provider is only used for later legs after the normal HTTP/RPC paths fail to return a matching result.
+
+## Custom integrations
+
+Custom integrations still implement HTML fetching only.
 
 ```python
 from fast_flights import get_flights, get_return_flights
@@ -22,7 +69,6 @@ from fast_flights.integrations.base import Integration
 
 class LocalIntegration(Integration):
     def fetch_html(self, q):
-        # Return the final Google Flights HTML for q.
         return "...html..."
 ```
 
@@ -36,25 +82,19 @@ results = get_flights(query, integration=LocalIntegration())
 returning = get_return_flights(return_query, integration=LocalIntegration())
 ```
 
-## Example shape for a browser-backed integration
+## Custom browser providers
+
+If you want your own browser runtime, implement `BrowserProvider` instead of `Integration`.
 
 ```python
-from fast_flights.fetcher import URL
-from playwright.sync_api import sync_playwright
-from fast_flights.integrations.base import Integration
+from fast_flights import BrowserCapture, BrowserProvider
 
 
-class PlaywrightIntegration(Integration):
-    def fetch_html(self, q):
-        url = URL + "?q=" + q if isinstance(q, str) else q.url()
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(url, wait_until="networkidle")
-            html = page.content()
-            browser.close()
-            return html
+class MyBrowserProvider(BrowserProvider):
+    def capture_next_leg(self, session):
+        return BrowserCapture(
+            leg_index=session.current_leg_index,
+            selected_url=session.current_search_url(),
+            captured_response_text="...raw shopping RPC response...",
+        )
 ```
-
-This is user-owned integration code, not a built-in mode of the package.
