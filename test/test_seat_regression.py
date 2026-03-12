@@ -46,9 +46,12 @@ class SeatRegressionTests(unittest.TestCase):
                 client,
                 legs,
                 tokens,
+                shopping=None,
                 language,
                 currency,
                 seat,
+                selected_legs=None,
+                referer=None,
                 max_retries=2,
             ):
                 self.assertEqual(seat, expected_seat)
@@ -82,9 +85,12 @@ class SeatRegressionTests(unittest.TestCase):
                 client,
                 legs,
                 tokens,
+                shopping=None,
                 language,
                 currency,
                 seat,
+                selected_legs=None,
+                referer=None,
                 max_retries=2,
             ):
                 self.assertEqual(seat, expected_seat)

@@ -54,7 +54,7 @@ class CabinTestResult:
     retries_needed: int = 0
 
 
-def test_cabin(cabin: str, max_attempts: int = 3) -> CabinTestResult:
+def run_cabin_check(cabin: str, max_attempts: int = 3) -> CabinTestResult:
     label = CABIN_LABELS[cabin]
     for attempt in range(max_attempts):
         try:
@@ -186,7 +186,7 @@ def main():
 
         label = CABIN_LABELS[cabin]
         print(f"[{i+1}/{len(CABIN_CLASSES)}] 測試 {label} ...", flush=True)
-        result = test_cabin(cabin)
+        result = run_cabin_check(cabin)
         status = "PASS ✅" if result.passed else "FAIL ❌"
         print(f"  → {status}", end="")
         if result.passed:

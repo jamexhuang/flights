@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from fast_flights import FlightQuery, Passengers, create_query, select_flight
+from fast_flights import FlightQuery, Passengers, ShoppingOptions, create_query, select_flight
 from fast_flights.fetcher import MulticityLeg, get_flights_multicity_chained, get_return_flights
 from fast_flights.model import CarbonEmission, Flights, Airport, SimpleDatetime, SingleFlight
 from fast_flights.querying import build_selected_tfs
@@ -59,6 +59,11 @@ class Issue1RegressionTests(unittest.TestCase):
             select_token="selected-token",
             select_data='["selected-tfs"]',
         )
+        self.live_selector_select_data = (
+            '["CAISA0dCUBoECIDkAyLLAQq0AQpZCgNUUEUSGTIwMjYtMDQtMDFUMTk6NDA6MDArMDg6MDAaA0FVSCIZMjAyNi0wNC0wMlQwMDo1NTowMCsw'
+            'NDowMCoCRVkyAzg5OToCRVlCAzg5OUgBUgM3ODkKVwoDQVVIEhkyMDI2LTA0LTAyVDAyOjIwOjAwKzA0OjAwGgNMSFIiGTIwMjYtMDQtMDJUMD'
+            'c6MDA6MDArMDE6MDAqAkVZMgI2MToCRVlCAjYxSAFSAzM4OBIECAMQARgBKAAyCAoGRXRpaGFk"]'
+        )
 
     def test_select_flight_decodes_selected_tfs_and_tracks_leg_index(self):
         selected = select_flight(self.roundtrip_query, self.outbound_flight)
@@ -88,6 +93,51 @@ class Issue1RegressionTests(unittest.TestCase):
             actual,
             "CBwQAho_EgoyMDI2LTA1LTAxIh8KA1RQRRIKMjAyNi0wNS0wMRoDTlJUKgJUUzIDMTIzagcIARIDVFBFcgcIARIDTlJUGh4SCjIwMjYtMDUtMDhqBwgBEgNOUlRyBwgBEgNUUEVAAUgBcAGCAQsI____________AZgBAQ",
         )
+
+    def test_select_flight_reconstructs_selected_segments_from_select_data(self):
+        query = create_query(
+            flights=[
+                FlightQuery(date="2026-04-01", from_airport="TPE", to_airport="LHR"),
+                FlightQuery(date="2026-04-14", from_airport="LHR", to_airport="TPE"),
+            ],
+            trip="round-trip",
+            seat="economy",
+            passengers=Passengers(adults=1),
+            language="en",
+            currency="GBP",
+        )
+        synthetic_outbound = Flights(
+            type="one-way",
+            price=620,
+            airlines=["Etihad"],
+            flights=[],
+            carbon=CarbonEmission(typical_on_route=0, emission=0),
+            select_token="selected-token",
+            select_data=self.live_selector_select_data,
+        )
+
+        selected = select_flight(query, synthetic_outbound)
+
+        self.assertEqual(len(selected.selected_legs), 1)
+        self.assertEqual(
+            tuple(
+                (
+                    segment.from_airport,
+                    segment.departure_date,
+                    segment.to_airport,
+                    segment.airline_code,
+                    segment.flight_number,
+                )
+                for segment in selected.selected_legs[0]
+            ),
+            (
+                ("TPE", "2026-04-01", "AUH", "EY", "899"),
+                ("AUH", "2026-04-02", "LHR", "EY", "61"),
+            ),
+        )
+        rebuilt = build_selected_tfs(query, selected.selected_legs)
+        self.assertIsNotNone(rebuilt)
+        self.assertIn(f"tfs={rebuilt}", selected.url())
 
     def test_get_return_flights_uses_ssr_results_when_direction_matches(self):
         selected = select_flight(self.roundtrip_query, self.outbound_flight)
@@ -131,6 +181,28 @@ class Issue1RegressionTests(unittest.TestCase):
         fallback_query = fallback.call_args.args[0]
         self.assertEqual(fallback_query._flights[0].from_airport, "NRT")
         self.assertEqual(fallback_query._flights[0].to_airport, "TPE")
+
+    def test_get_return_flights_shopping_replays_selected_leg_context(self):
+        selected = select_flight(self.roundtrip_query, self.outbound_flight)
+        observed = {}
+
+        def fake_fetch_shopping_results(**kwargs):
+            observed["selected_legs"] = kwargs.get("selected_legs")
+            return [], 1000, "", _results("TPE", "NRT", price=1000)
+
+        with patch("fast_flights.fetcher._get_selected_html_results", return_value=None):
+            with patch("fast_flights.fetcher._build_default_client", return_value=object()):
+                with patch("fast_flights.fetcher.fetch_shopping_results", side_effect=fake_fetch_shopping_results):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "Could not fetch exact shopping results for the requested return leg.",
+                    ):
+                        get_return_flights(
+                            selected,
+                            shopping=ShoppingOptions(ranking_mode="cheapest", result_sort="price"),
+                        )
+
+        self.assertEqual(observed["selected_legs"], selected.selected_legs)
 
     def test_get_flights_multicity_chained_uses_directional_results_per_leg(self):
         legs = [

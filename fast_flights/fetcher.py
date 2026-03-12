@@ -169,6 +169,7 @@ def get_return_flights(
             legs=q.base._flights,
             tokens=list(q.selection_tokens),
             shopping=shopping,
+            selected_legs=q.selected_legs,
             language=q.base.language if q.base.language else "en-US",
             currency=q.base.currency if q.base.currency else "USD",
             seat=_query_seat_name(q.base),

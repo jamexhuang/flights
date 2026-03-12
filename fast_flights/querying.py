@@ -1,6 +1,7 @@
-from base64 import b64encode
+from base64 import b64decode, b64encode
 from dataclasses import dataclass
 from datetime import datetime as Datetime
+import re
 from typing import Literal, Optional, Union
 from urllib.parse import urlencode
 
@@ -193,9 +194,10 @@ class ReturnQuery:
     def params(self) -> dict[str, str]:
         """Create `params` in dictionary form, including the ``tfu`` key."""
         p = self.base.params()
-        # Use a fully rebuilt booking tfs string if possible so the URL is shareable
-        # across sessions. Fall back to the raw selected_tfs if rebuilding fails.
-        tfs = build_booking_tfs(self.base, self.selected_legs) or self.selected_tfs
+        # Use a fully rebuilt booking tfs string only when every selected leg can
+        # be reconstructed. Synthetic selector flows can carry a valid
+        # ``selected_tfs`` even when ``selected_legs`` was initially empty.
+        tfs = _effective_return_tfs(self.base, self.selected_legs, self.selected_tfs)
         if tfs:
             p["tfs"] = tfs
         p["tfu"] = self.tfu
@@ -203,7 +205,7 @@ class ReturnQuery:
 
     def url(self) -> str:
         """Get the URL for this return-flight query."""
-        tfs = build_booking_tfs(self.base, self.selected_legs) or self.selected_tfs or self.base.to_str()
+        tfs = _effective_return_tfs(self.base, self.selected_legs, self.selected_tfs) or self.base.to_str()
         return (
             "https://www.google.com/travel/flights/search?tfs="
             + tfs
@@ -271,6 +273,53 @@ def _extract_selected_tfs(select_data: str | None) -> str | None:
         return decoded
 
     return None
+
+
+_SELECT_DATA_SEGMENT_PATTERN = re.compile(
+    rb'\n[\x00-\xff]\n\x03(?P<from>[A-Z0-9]{3})'
+    rb'\x12\x19(?P<departure>[0-9T:+-]{25})'
+    rb'\x1a\x03(?P<to>[A-Z0-9]{3})'
+    rb'"\x19(?P<arrival>[0-9T:+-]{25})'
+    rb'\*\x02(?P<airline>[A-Z0-9]{2,3})'
+    rb'2[\x01-\x08](?P<flight>[0-9A-Z]{1,8})'
+)
+
+
+def _extract_selected_leg_from_select_data(select_data: str | None) -> tuple[SelectedSegment, ...]:
+    """Best-effort segment reconstruction from ``Flights.select_data``.
+
+    Google's selected-flight payload contains a compact protobuf-like blob with
+    all chosen segment details. Synthetic ``Flights`` objects created from a
+    token + ``select_data`` pair do not carry ``flight.flights``, so we decode
+    the raw blob and recover the selected legs directly.
+    """
+    selected_tfs = _extract_selected_tfs(select_data)
+    if not selected_tfs:
+        return ()
+
+    try:
+        padded = selected_tfs + ("=" * (-len(selected_tfs) % 4))
+        payload = b64decode(padded, altchars=b"-_")
+    except Exception:
+        return ()
+
+    segments: list[SelectedSegment] = []
+    for match in _SELECT_DATA_SEGMENT_PATTERN.finditer(payload):
+        try:
+            departure = match.group("departure").decode("utf-8")
+            segments.append(
+                SelectedSegment(
+                    from_airport=match.group("from").decode("utf-8"),
+                    departure_date=departure[:10],
+                    to_airport=match.group("to").decode("utf-8"),
+                    airline_code=match.group("airline").decode("utf-8"),
+                    flight_number=match.group("flight").decode("utf-8"),
+                )
+            )
+        except Exception:
+            return ()
+
+    return tuple(segments)
 
 
 def _format_segment_date(date: tuple[int, int, int] | list[int]) -> str:
@@ -363,6 +412,18 @@ def build_booking_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, 
     return b64encode(payload, altchars=b"-_").decode("utf-8").rstrip("=")
 
 
+def _effective_return_tfs(
+    query: Query,
+    selected_legs: tuple[tuple[SelectedSegment, ...], ...],
+    selected_tfs: str | None,
+) -> str | None:
+    if selected_legs and all(selected_legs):
+        rebuilt = build_booking_tfs(query, selected_legs)
+        if rebuilt:
+            return rebuilt
+    return selected_tfs
+
+
 def build_selected_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, ...], ...]) -> str | None:
     """Backward-compatible alias for :func:`build_booking_tfs`."""
     return build_booking_tfs(query, selected_legs)
@@ -434,10 +495,11 @@ def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuer
 
     tfu = _build_tfu(flight.select_token)
     selected_tfs = _extract_selected_tfs(flight.select_data)
+    selected_leg = _extract_selected_leg(flight) or _extract_selected_leg_from_select_data(flight.select_data)
 
     if isinstance(query, ReturnQuery):
         selection_tokens = (*query.selection_tokens, flight.select_token)
-        selected_legs = (*query.selected_legs, _extract_selected_leg(flight))
+        selected_legs = (*query.selected_legs, selected_leg)
         # Chain: keep the same base Query, just update the tfu token
         return ReturnQuery(
             base=query.base,
@@ -454,5 +516,5 @@ def select_flight(query: "Query | ReturnQuery", flight: "Flights") -> ReturnQuer
             selected_tfs=selected_tfs,
             next_leg_index=1,
             selection_tokens=(flight.select_token,),
-            selected_legs=(_extract_selected_leg(flight),),
+            selected_legs=(selected_leg,),
         )

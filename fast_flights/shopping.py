@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from primp import Client
 
-from .querying import FlightQuery
+from .querying import FlightQuery, SelectedSegment
 from .parser import MetaList, parse_payload
 from .shopping_options import ShoppingOptions
 
@@ -22,20 +22,44 @@ def _encode_shopping_request(
     tokens: list[str],
     seat_val: int = 1,
     shopping: ShoppingOptions | None = None,
+    selected_legs: tuple[tuple[SelectedSegment, ...], ...] | None = None,
 ) -> str:
+    exact_selection = bool(selected_legs and any(selected_legs))
     flights_array = []
-    for leg in legs:
+    for idx, leg in enumerate(legs):
         date_str = leg.date if isinstance(leg.date, str) else leg.date.strftime("%Y-%m-%d")
+        selected_segments = None
+        if selected_legs and idx < len(selected_legs) and selected_legs[idx]:
+            selected_segments = [
+                [
+                    segment.from_airport,
+                    segment.departure_date,
+                    segment.to_airport,
+                    None,
+                    segment.airline_code,
+                    segment.flight_number,
+                ]
+                for segment in selected_legs[idx]
+            ]
         flights_array.append([
             [[[leg.from_airport, 0]]],
             [[[leg.to_airport, 0]]],
             None, 0, None, None,
             date_str,
-            None, None, None, None, None, None, None, 3
+            None,
+            selected_segments,
+            None,
+            None,
+            None,
+            None,
+            None,
+            3,
         ])
-    
-    tokens_arr = []
-    if len(tokens) > 0:
+
+    tokens_arr: list | list[list] = []
+    if exact_selection and len(tokens) > 0:
+        tokens_arr = [None, *tokens]
+    elif len(tokens) > 0:
         token_entry = [None, None, None, tokens[0]]
         for t in tokens[1:]:
              token_entry.append(t)
@@ -157,6 +181,7 @@ def fetch_shopping_results(
     legs: list[FlightQuery],
     tokens: list[str],
     shopping: ShoppingOptions | None = None,
+    selected_legs: tuple[tuple[SelectedSegment, ...], ...] | None = None,
     language: str = "en-US",
     currency: str = "USD",
     seat: str = "economy",
@@ -191,7 +216,13 @@ def fetch_shopping_results(
 
     _warmup_shopping_session(client, language=_lang_code, cookie_header=headers["cookie"])
 
-    body = _encode_shopping_request(legs, tokens, seat_val, shopping=shopping).encode("utf-8")
+    body = _encode_shopping_request(
+        legs,
+        tokens,
+        seat_val,
+        shopping=shopping,
+        selected_legs=selected_legs,
+    ).encode("utf-8")
     tokens_found: list[str] = []
     content = ""
     flights_found = None

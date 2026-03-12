@@ -211,6 +211,7 @@ class SearchSession:
                 legs=self.query._flights or [],
                 tokens=list(self.selection_tokens),
                 shopping=self.shopping,
+                selected_legs=self.selected_legs,
                 language=self.query.language if self.query.language else "en-US",
                 currency=self.query.currency if self.query.currency else "USD",
                 seat=_query_seat_name(self.query),
