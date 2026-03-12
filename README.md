@@ -15,7 +15,7 @@ pip install faster-flights
 ## Quick start
 
 ```python
-from fast_flights import FlightQuery, Passengers, create_query, get_flights
+from fast_flights import FlightQuery, Passengers, ShoppingOptions, create_query, get_flights
 
 query = create_query(
     flights=[
@@ -32,10 +32,19 @@ query = create_query(
     currency="USD",
 )
 
-results = get_flights(query)
+results = get_flights(
+    query,
+    shopping=ShoppingOptions(
+        ranking_mode="best",
+        result_sort="top_flights",
+    ),
+)
 
 for flight in results[:3]:
     print(f"{flight.airlines} - ${flight.price}")
+    print(flight.rank, flight.group_key)
+
+print(results.metadata.shopping.cheapest_price)
 ```
 
 ## Current public API
@@ -46,6 +55,7 @@ The supported top-level API is the set exported from `fast_flights`:
 - `Passengers`
 - `create_query()` and `create_filter()` (`create_filter` is a compatibility alias)
 - `SearchSession`
+- `ShoppingOptions`
 - `build_booking_tfs()` / `build_booking_url()`
 - `get_flights()`
 - `select_flight()`
@@ -57,6 +67,34 @@ The supported top-level API is the set exported from `fast_flights`:
 - `fetch_flights_html()`
 
 Use IATA airport codes like `"TPE"`, `"NRT"`, or `"JFK"` in `FlightQuery`. The repository does not currently export a public airport search helper.
+
+## Google shopping ranking and sorting
+
+Use `ShoppingOptions` when you want the same server-side ranking and ordering that Google Flights uses in its shopping RPC:
+
+```python
+from fast_flights import ShoppingOptions, get_flights
+
+results = get_flights(
+    query,
+    shopping=ShoppingOptions(
+        ranking_mode="cheapest",
+        result_sort="price",
+    ),
+)
+```
+
+Supported values:
+
+- `ranking_mode`: `best`, `cheapest`
+- `result_sort`: `top_flights`, `price`, `departure_time`, `arrival_time`, `duration`, `emissions`
+
+When `shopping` is provided:
+
+- `get_flights()` and `get_return_flights()` use the shopping RPC instead of HTML parsing
+- result order matches Google’s RPC order
+- `results.metadata.shopping` includes ranking metadata such as `ranking_mode`, `result_sort`, `cheapest_price`, `ranking_token`, `source`, and Google group boundaries
+- each `Flights` item carries additive `rank`, `group_key`, and `group_title` metadata
 
 ## Round-trip searches
 
@@ -100,10 +138,10 @@ Only if both HTML paths fail does the library fall back to an independent one-wa
 
 ### Session workflow
 
-Use `SearchSession` when you want one API for chained search state, current search links, and the final booking link:
+Use `SearchSession` when you want one API for chained search state, current search links, the final booking link, and optional Google shopping ranking:
 
 ```python
-from fast_flights import FlightQuery, Passengers, SearchSession, create_query
+from fast_flights import FlightQuery, Passengers, SearchSession, ShoppingOptions, create_query
 
 query = create_query(
     flights=[
@@ -117,7 +155,11 @@ query = create_query(
     currency="USD",
 )
 
-session = SearchSession(query, mode="rpc-first")
+session = SearchSession(
+    query,
+    mode="rpc-first",
+    shopping=ShoppingOptions(ranking_mode="best", result_sort="top_flights"),
+)
 outbound = session.results()
 session = session.select(outbound[0])
 returning = session.results()

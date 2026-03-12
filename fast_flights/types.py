@@ -148,3 +148,12 @@ Currency = Literal[
 
 SeatType = Literal["economy", "premium-economy", "business", "first"]
 TripType = Literal["round-trip", "one-way", "multi-city"]
+ShoppingRankingMode = Literal["best", "cheapest"]
+ShoppingResultSort = Literal[
+    "top_flights",
+    "price",
+    "departure_time",
+    "arrival_time",
+    "duration",
+    "emissions",
+]

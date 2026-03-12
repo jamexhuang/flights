@@ -13,6 +13,7 @@ from .fetcher import (
     _query_seat_name,
     _results_match_leg,
     get_flights,
+    get_return_flights,
     get_selected_flight_page,
 )
 from .integrations.base import Integration
@@ -24,6 +25,7 @@ from .querying import (
     build_booking_url,
     select_flight,
 )
+from .shopping_options import ShoppingOptions
 from .shopping import _extract_full_flights_list, fetch_shopping_results
 
 
@@ -51,6 +53,7 @@ class SearchSession:
     integration: Integration | None = None
     browser_provider: BrowserProvider | None = None
     browser_fallback: bool = False
+    shopping: ShoppingOptions | None = None
     shopping_context: ShoppingContext = field(default_factory=ShoppingContext)
 
     def __post_init__(self) -> None:
@@ -132,8 +135,16 @@ class SearchSession:
         if browser_results is not None:
             return browser_results
 
+        if self.shopping is not None:
+            raise ValueError("Could not fetch exact shopping results for the requested session state.")
+
         if self.current_leg_index == 0:
-            return get_flights(self.query, proxy=self.proxy, integration=self.integration)
+            return get_flights(
+                self.query,
+                proxy=self.proxy,
+                integration=self.integration,
+                shopping=self.shopping,
+            )
         return _get_directional_leg_results(
             self.query,
             self.current_leg_index,
@@ -167,6 +178,7 @@ class SearchSession:
                 integration=self.integration,
                 browser_provider=self.browser_provider,
                 browser_fallback=self.browser_fallback,
+                shopping=self.shopping,
                 shopping_context=self.shopping_context,
             )
 
@@ -184,6 +196,7 @@ class SearchSession:
             integration=self.integration,
             browser_provider=self.browser_provider,
             browser_fallback=self.browser_fallback,
+            shopping=self.shopping,
             shopping_context=next_context,
         )
 
@@ -197,6 +210,7 @@ class SearchSession:
                 client=client,
                 legs=self.query._flights or [],
                 tokens=list(self.selection_tokens),
+                shopping=self.shopping,
                 language=self.query.language if self.query.language else "en-US",
                 currency=self.query.currency if self.query.currency else "USD",
                 seat=_query_seat_name(self.query),
@@ -230,7 +244,7 @@ class SearchSession:
         if not response_text:
             return None
 
-        flights = _extract_full_flights_list(response_text)
+        flights = _extract_full_flights_list(response_text, shopping=self.shopping, source="browser-capture")
         if flights and _results_match_leg(flights, self._expected_leg()):
             return flights
         return None
@@ -243,6 +257,7 @@ class SearchSession:
                     self.query,
                     proxy=self.proxy,
                     integration=self.integration,
+                    shopping=self.shopping,
                 )
             except Exception:
                 return None
@@ -252,6 +267,17 @@ class SearchSession:
 
         if self.return_query is None:
             return None
+
+        if self.shopping is not None:
+            try:
+                return get_return_flights(
+                    self.return_query,
+                    proxy=self.proxy,
+                    integration=self.integration,
+                    shopping=self.shopping,
+                )
+            except Exception:
+                return None
 
         selected_results = _get_selected_html_results(
             self.return_query,

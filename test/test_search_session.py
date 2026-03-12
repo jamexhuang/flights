@@ -8,6 +8,7 @@ from fast_flights import (
     FlightQuery,
     Passengers,
     SearchSession,
+    ShoppingOptions,
     build_booking_tfs,
     create_query,
     select_flight,
@@ -186,6 +187,7 @@ class SearchSessionTests(unittest.TestCase):
             rpc_calls.append(
                 {
                     "tokens": tuple(kwargs["tokens"]),
+                    "shopping": kwargs.get("shopping"),
                     "f_sid": kwargs.get("f_sid"),
                     "bl": kwargs.get("bl"),
                     "referer": kwargs.get("referer"),
@@ -230,6 +232,7 @@ class SearchSessionTests(unittest.TestCase):
         self.assertEqual(second_leg[0].flights[-1].to_airport.code, "LHR")
         self.assertEqual(rpc_calls[0]["tokens"], ())
         self.assertEqual(rpc_calls[1]["tokens"], ("token-1",))
+        self.assertIsNone(rpc_calls[0]["shopping"])
         self.assertEqual(rpc_calls[1]["f_sid"], "rpc-session-1")
         self.assertEqual(rpc_calls[1]["bl"], "boq_travel-frontend-flights-ui_test")
         self.assertEqual(rpc_calls[1]["referer"], "https://example.test/selected/1")
@@ -237,6 +240,67 @@ class SearchSessionTests(unittest.TestCase):
         self.assertTrue(done_session.is_complete)
         self.assertEqual(done_session.final_booking_tfs, build_booking_tfs(query, done_session.selected_legs))
         self.assertIn("/travel/flights/booking?tfs=", done_session.booking_url())
+
+    def test_roundtrip_session_passes_shopping_options_through_rpc(self):
+        query = create_query(
+            flights=[
+                FlightQuery(date="2026-05-03", from_airport="LHR", to_airport="TPE"),
+                FlightQuery(date="2026-05-17", from_airport="TPE", to_airport="LHR"),
+            ],
+            trip="round-trip",
+            seat="economy",
+            passengers=Passengers(adults=1),
+            language="en",
+            currency="GBP",
+        )
+        outbound = _results(
+            _flight(
+                "LHR",
+                "TPE",
+                price=347,
+                select_token="token-1",
+                select_data='["search-tfs-1"]',
+            )
+        )
+        returning = _results(
+            _flight(
+                "TPE",
+                "LHR",
+                price=347,
+                select_token="token-2",
+                select_data='["search-tfs-2"]',
+            )
+        )
+        shopping = ShoppingOptions(ranking_mode="cheapest", result_sort="price")
+        rpc_calls = []
+
+        def fake_fetch_shopping_results(**kwargs):
+            rpc_calls.append(kwargs["shopping"])
+            if not kwargs["tokens"]:
+                return [], outbound[0].price, "", outbound
+            return [], returning[0].price, "", returning
+
+        selected_after_outbound = select_flight(query, outbound[0])
+        page_one = SelectedFlightPage(
+            return_query=selected_after_outbound,
+            url="https://example.test/selected/1",
+            f_sid="rpc-session-1",
+            bl="boq_travel-frontend-flights-ui_test",
+            data_service_requests={
+                "ds:1": GoogleFlightsDataServiceRequest(key="ds:1", rpc_id="rpc-1", request=[None, 1])
+            },
+        )
+
+        with patch("fast_flights.session._build_default_client", return_value=object()):
+            with patch("fast_flights.session.fetch_shopping_results", side_effect=fake_fetch_shopping_results):
+                with patch("fast_flights.session.get_selected_flight_page", side_effect=[page_one]):
+                    session = SearchSession(query, shopping=shopping)
+                    first_leg = session.results()
+                    next_session = session.select(first_leg[0])
+                    next_session.results()
+
+        self.assertEqual(first_leg[0].price, 347)
+        self.assertEqual(rpc_calls, [shopping, shopping])
 
     def test_multicity_session_chains_selection_tokens_across_legs(self):
         query = create_query(

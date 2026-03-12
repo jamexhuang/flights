@@ -7,6 +7,7 @@ from primp import Client
 
 from .querying import FlightQuery
 from .parser import MetaList, parse_payload
+from .shopping_options import ShoppingOptions
 
 DEFAULT_RPC_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -16,7 +17,12 @@ DEFAULT_RPC_USER_AGENT = (
 DEFAULT_RPC_F_SID = "6697578230526900010"
 DEFAULT_RPC_BL = "boq_travel-frontend-flights-ui_20260303.06_p0"
 
-def _encode_shopping_request(legs: list[FlightQuery], tokens: list[str], seat_val: int = 1) -> str:
+def _encode_shopping_request(
+    legs: list[FlightQuery],
+    tokens: list[str],
+    seat_val: int = 1,
+    shopping: ShoppingOptions | None = None,
+) -> str:
     flights_array = []
     for leg in legs:
         date_str = leg.date if isinstance(leg.date, str) else leg.date.strftime("%Y-%m-%d")
@@ -35,10 +41,12 @@ def _encode_shopping_request(legs: list[FlightQuery], tokens: list[str], seat_va
              token_entry.append(t)
         tokens_arr = [token_entry]
         
+    shopping = shopping or ShoppingOptions()
+
     inner_json = [
         tokens_arr,
         [None, None, 3, None, [], seat_val, [1, 0, 0, 0], None, None, None, None, None, None, flights_array, None, None, None, 1],
-        0, 0, 0, 1
+        shopping.sort_id, 0, 0, shopping.ranking_id
     ]
     
     req_str = json.dumps([None, json.dumps(inner_json, separators=(',', ':'))], separators=(',', ':'))
@@ -62,7 +70,12 @@ def _extract_flight_tokens(raw_response_text: str) -> list[str]:
     unique.sort(key=lambda x: ("----" in x or "AAAA" in x), reverse=True)
     return unique
 
-def _extract_full_flights_list(raw_response_text: str) -> 'MetaList | None':
+def _extract_full_flights_list(
+    raw_response_text: str,
+    *,
+    shopping: ShoppingOptions | None = None,
+    source: str | None = None,
+) -> 'MetaList | None':
     """
     Extract flight data from the GetShoppingResults RPC response.
     
@@ -89,7 +102,7 @@ def _extract_full_flights_list(raw_response_text: str) -> 'MetaList | None':
             return None
 
         payload = json.loads(outer[0][2])
-        return parse_payload(payload, include_top_results=True)
+        return parse_payload(payload, include_top_results=True, shopping=shopping, source=source)
     except Exception:
         return None
 
@@ -143,6 +156,7 @@ def fetch_shopping_results(
     client: Client,
     legs: list[FlightQuery],
     tokens: list[str],
+    shopping: ShoppingOptions | None = None,
     language: str = "en-US",
     currency: str = "USD",
     seat: str = "economy",
@@ -177,7 +191,7 @@ def fetch_shopping_results(
 
     _warmup_shopping_session(client, language=_lang_code, cookie_header=headers["cookie"])
 
-    body = _encode_shopping_request(legs, tokens, seat_val).encode("utf-8")
+    body = _encode_shopping_request(legs, tokens, seat_val, shopping=shopping).encode("utf-8")
     tokens_found: list[str] = []
     content = ""
     flights_found = None
@@ -199,7 +213,7 @@ def fetch_shopping_results(
 
         content = res.text
         tokens_found = _extract_flight_tokens(content)
-        flights_found = _extract_full_flights_list(content)
+        flights_found = _extract_full_flights_list(content, shopping=shopping, source="rpc")
 
         if flights_found is not None and len(flights_found) > 0:
             price_found = flights_found[0].price

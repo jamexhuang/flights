@@ -9,6 +9,7 @@ from primp import Client
 from .integrations.base import Integration
 from .parser import MetaList, parse
 from .querying import Query, ReturnQuery, build_booking_tfs
+from .shopping_options import ShoppingOptions
 from .shopping import fetch_shopping_results
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ def _build_default_client(*, proxy: str | None = None) -> Client:
 
 
 @overload
-def get_flights(q: str, /, *, proxy: str | None = None) -> MetaList:
+def get_flights(q: str, /, *, proxy: str | None = None, shopping: ShoppingOptions | None = None) -> MetaList:
     """Get flights using a str query.
 
     Examples:
@@ -44,7 +45,7 @@ def get_flights(q: str, /, *, proxy: str | None = None) -> MetaList:
 
 
 @overload
-def get_flights(q: Query, /, *, proxy: str | None = None) -> MetaList:
+def get_flights(q: Query, /, *, proxy: str | None = None, shopping: ShoppingOptions | None = None) -> MetaList:
     """Get flights using a structured query.
 
     Example:
@@ -70,7 +71,12 @@ def get_flights(q: Query, /, *, proxy: str | None = None) -> MetaList:
 
 
 def get_flights(
-    q: Query | ReturnQuery | str, /, *, proxy: str | None = None, integration: Integration | None = None
+    q: Query | ReturnQuery | str,
+    /,
+    *,
+    proxy: str | None = None,
+    integration: Integration | None = None,
+    shopping: ShoppingOptions | None = None,
 ) -> MetaList:
     """Get flights.
 
@@ -82,9 +88,10 @@ def get_flights(
     if isinstance(q, str):
         q = Query.from_url(q)
 
-    # For multi-city, the initial HTML does not contain flight data; we must use the RPC.
+    # For multi-city and explicit shopping sort requests, the initial HTML
+    # does not preserve the RPC ordering/metadata we want to expose.
     # q.trip == 3 corresponds to multi-city in TRIP_LOOKUP
-    if isinstance(q, Query) and q.trip == 3:
+    if isinstance(q, Query) and (q.trip == 3 or shopping is not None):
         client = _build_default_client(proxy=proxy)
         if not q._flights:
             raise ValueError("Multi-city search requires flight models. Pass FlightQuery legs into create_query.")
@@ -101,6 +108,7 @@ def get_flights(
             client=client,
             legs=q._flights,
             tokens=[],
+            shopping=shopping,
             language=q.language if q.language else "en-US",
             currency=q.currency if q.currency else "USD",
             seat=seat_str,
@@ -118,6 +126,7 @@ def get_return_flights(
     *,
     proxy: str | None = None,
     integration: Integration | None = None,
+    shopping: ShoppingOptions | None = None,
 ) -> MetaList:
     """Get return flights after selecting an outbound flight.
 
@@ -143,10 +152,31 @@ def get_return_flights(
         return selected_results
 
     bundled_results = None
-    if integration is None:
+    if integration is None and shopping is None:
         bundled_results = _get_bundled_leg_results(q, proxy=proxy)
         if bundled_results is not None:
             return bundled_results
+
+    if shopping is not None:
+        expected_leg = _get_expected_return_leg(q)
+        if expected_leg is None:
+            raise ValueError("ReturnQuery is missing the expected next leg.")
+        if not q.base._flights:
+            raise ValueError("ReturnQuery base query is missing flight models.")
+        client = _build_default_client(proxy=proxy)
+        _, _, _, flights_found = fetch_shopping_results(
+            client=client,
+            legs=q.base._flights,
+            tokens=list(q.selection_tokens),
+            shopping=shopping,
+            language=q.base.language if q.base.language else "en-US",
+            currency=q.base.currency if q.base.currency else "USD",
+            seat=_query_seat_name(q.base),
+            referer=q.url(),
+        )
+        if flights_found and _results_match_leg(flights_found, expected_leg):
+            return flights_found
+        raise ValueError("Could not fetch exact shopping results for the requested return leg.")
 
     # Google's selected-flight HTML no longer reliably SSRs the reverse leg,
     # but replaying the browser-style selected ``tfs`` can also fail if the

@@ -1,4 +1,5 @@
 import json
+from typing import TYPE_CHECKING
 
 from selectolax.lexbor import LexborHTMLParser
 
@@ -9,9 +10,15 @@ from .model import (
     CarbonEmission,
     Flights,
     JsMetadata,
+    ShoppingGroup,
+    ShoppingMetadata,
     SimpleDatetime,
     SingleFlight,
 )
+from .shopping_options import SHOPPING_ID_TO_RANKING
+
+if TYPE_CHECKING:
+    from .shopping_options import ShoppingOptions
 
 
 class MetaList(list[Flights]):
@@ -172,26 +179,77 @@ def _parse_flight_entry(entry: list, airline_name_to_code: dict[str, str]) -> Fl
         return None
 
 
-def parse_payload(payload: list, *, include_top_results: bool = False) -> MetaList:
+def _parse_cheapest_price(payload: list) -> int | None:
+    try:
+        return payload[25][0][1]
+    except (IndexError, TypeError, KeyError):
+        return None
+
+
+def _parse_ranking_token(payload: list) -> str | None:
+    try:
+        token = payload[30][1]
+    except (IndexError, TypeError, KeyError):
+        return None
+    return token if isinstance(token, str) else None
+
+
+def _parse_ranking_mode(payload: list) -> str | None:
+    try:
+        ranking_id = payload[29]
+    except (IndexError, TypeError, KeyError):
+        return None
+    if not isinstance(ranking_id, int):
+        return None
+    return SHOPPING_ID_TO_RANKING.get(ranking_id)
+
+
+def parse_payload(
+    payload: list,
+    *,
+    include_top_results: bool = False,
+    shopping: "ShoppingOptions | None" = None,
+    source: str | None = None,
+) -> MetaList:
     meta, airline_name_to_code = _parse_metadata(payload)
     flights = MetaList()
+    shopping_meta = ShoppingMetadata(
+        ranking_mode=_parse_ranking_mode(payload),
+        result_sort=shopping.result_sort if shopping is not None else None,
+        source=source,
+        cheapest_price=_parse_cheapest_price(payload),
+        ranking_token=_parse_ranking_token(payload),
+    )
+    meta.shopping = shopping_meta
     flights.metadata = meta
 
-    candidate_groups: list[list] = []
+    top_results = None
     if include_top_results:
         try:
             if payload[2] is not None and payload[2][0] is not None:
-                candidate_groups.append(payload[2][0])
+                top_results = payload[2][0]
         except (IndexError, TypeError):
             pass
+
+    main_results = None
     try:
         if payload[3] is not None and payload[3][0] is not None:
-            candidate_groups.append(payload[3][0])
+            main_results = payload[3][0]
     except (IndexError, TypeError):
         pass
 
+    candidate_groups: list[tuple[str, str, list]] = []
+    if top_results and main_results:
+        candidate_groups.append(("top", "Top departing flights", top_results))
+        candidate_groups.append(("other", "Other departing flights", main_results))
+    elif main_results:
+        candidate_groups.append(("all", "Departing flights", main_results))
+    elif top_results:
+        candidate_groups.append(("all", "Departing flights", top_results))
+
     seen_signatures: set[tuple] = set()
-    for group in candidate_groups:
+    for group_key, group_title, group in candidate_groups:
+        group_indices: list[int] = []
         for entry in group:
             signature = _flight_entry_signature(entry)
             if signature is not None and signature in seen_signatures:
@@ -199,9 +257,17 @@ def parse_payload(payload: list, *, include_top_results: bool = False) -> MetaLi
             parsed = _parse_flight_entry(entry, airline_name_to_code)
             if parsed is None:
                 continue
+            parsed.rank = len(flights)
+            parsed.group_key = group_key
+            parsed.group_title = group_title
             flights.append(parsed)
+            group_indices.append(parsed.rank)
             if signature is not None:
                 seen_signatures.add(signature)
+        if group_indices:
+            shopping_meta.groups.append(
+                ShoppingGroup(key=group_key, title=group_title, flight_indices=group_indices)
+            )
 
     return flights
 

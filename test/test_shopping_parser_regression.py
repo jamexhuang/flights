@@ -2,6 +2,7 @@ import json
 import unittest
 
 from fast_flights.querying import FlightQuery, Passengers, SelectedSegment, build_booking_tfs, build_booking_url, create_query
+from fast_flights.shopping_options import ShoppingOptions
 from fast_flights.shopping import _extract_full_flights_list
 
 
@@ -127,6 +128,13 @@ class ShoppingParserRegressionTests(unittest.TestCase):
 
         self.assertIsNotNone(flights)
         self.assertEqual(len(flights), 2)
+        self.assertIsNotNone(flights.metadata.shopping)
+        self.assertEqual(flights.metadata.shopping.groups[0].key, "top")
+        self.assertEqual(flights.metadata.shopping.groups[1].key, "other")
+        self.assertEqual(flights[0].rank, 0)
+        self.assertEqual(flights[0].group_key, "top")
+        self.assertEqual(flights[1].rank, 1)
+        self.assertEqual(flights[1].group_key, "other")
         self.assertEqual(len(flights[0].flights), 2)
         self.assertEqual(flights[0].flights[0].from_airport.code, "LHR")
         self.assertEqual(flights[0].flights[1].to_airport.code, "TPE")
@@ -134,6 +142,29 @@ class ShoppingParserRegressionTests(unittest.TestCase):
         self.assertEqual(flights[0].flights[1].flight_number, "5007")
         self.assertEqual(flights[0].select_token, "token-1")
         self.assertEqual(flights[0].select_data, '["selected-tfs-1"]')
+
+    def test_extract_full_flights_list_tracks_google_shopping_metadata(self):
+        payload = [None] * 33
+        payload[2] = [[[]]]
+        payload[3] = [[[]]]
+        payload[7] = [None, [[], []]]
+        payload[25] = [[None, 444]]
+        payload[29] = 2
+        payload[30] = [[None, 444], "ranking-token"]
+        raw = ")]}'\n\n1\n" + json.dumps([["wrb.fr", None, json.dumps(payload)]]) + "\n"
+
+        flights = _extract_full_flights_list(
+            raw,
+            shopping=ShoppingOptions(ranking_mode="cheapest", result_sort="price"),
+            source="rpc",
+        )
+
+        self.assertIsNotNone(flights)
+        self.assertEqual(flights.metadata.shopping.ranking_mode, "cheapest")
+        self.assertEqual(flights.metadata.shopping.result_sort, "price")
+        self.assertEqual(flights.metadata.shopping.cheapest_price, 444)
+        self.assertEqual(flights.metadata.shopping.ranking_token, "ranking-token")
+        self.assertEqual(flights.metadata.shopping.source, "rpc")
 
     def test_build_booking_tfs_recreates_browser_booking_payload(self):
         query = create_query(

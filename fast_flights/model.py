@@ -18,6 +18,7 @@ class Alliance:
 class JsMetadata:
     airlines: list[Airline]
     alliances: list[Alliance]
+    shopping: Optional["ShoppingMetadata"] = None
 
 
 @dataclass
@@ -51,12 +52,32 @@ class CarbonEmission:
 
 
 @dataclass
+class ShoppingGroup:
+    key: str
+    title: str
+    flight_indices: list[int]
+
+
+@dataclass
+class ShoppingMetadata:
+    ranking_mode: str | None = None
+    result_sort: str | None = None
+    source: str | None = None
+    cheapest_price: int | None = None
+    ranking_token: str | None = None
+    groups: list[ShoppingGroup] = field(default_factory=list)
+
+
+@dataclass
 class Flights:
     type: str | Literal["multi"]
     price: int
     airlines: list[str]
     flights: list[SingleFlight]
     carbon: CarbonEmission
+    rank: Optional[int] = None
+    group_key: Optional[str] = None
+    group_title: Optional[str] = None
     select_token: Optional[str] = field(default=None, repr=False)
     """Session token from ds:1 data (f[1][1]) used for the ``tfu`` URL
     parameter when querying return flights in a round-trip search."""

@@ -29,6 +29,7 @@ from .fetcher import (
     MulticityLegChained,
     SelectedFlightPage,
 )
+from .shopping_options import ShoppingOptions
 from .session import SearchSession
 
 __all__ = [
@@ -57,5 +58,6 @@ __all__ = [
     "MulticityLeg",
     "MulticityLegChained",
     "SelectedFlightPage",
+    "ShoppingOptions",
     "integrations",
 ]
