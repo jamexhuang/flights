@@ -382,6 +382,15 @@ def _selected_tfs_max_stops(base: Query) -> int:
     return max(stops)
 
 
+def _booking_trip_code(query: Query) -> int:
+    """Map query trip type to the selected-itinerary booking payload code."""
+    if query.trip == Trip.MULTI_CITY:
+        return 3
+    if query.trip == Trip.ONE_WAY:
+        return 1
+    return 2
+
+
 def build_booking_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, ...], ...]) -> str | None:
     if not query._flights:
         return None
@@ -391,7 +400,7 @@ def build_booking_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, 
     payload = b"".join(
         (
             _encode_field_varint(1, 28),
-            _encode_field_varint(2, 2),
+            _encode_field_varint(2, _booking_trip_code(query)),
             *(
                 _encode_len(
                     3,

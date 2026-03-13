@@ -1,5 +1,7 @@
 import json
 import unittest
+from base64 import urlsafe_b64decode
+from urllib.parse import parse_qs, urlparse
 
 from fast_flights.querying import FlightQuery, Passengers, SelectedSegment, build_booking_tfs, build_booking_url, create_query
 from fast_flights.shopping_options import ShoppingOptions
@@ -55,6 +57,42 @@ def _flight_entry(
     entry[1] = [[None, price], select_token]
     entry[8] = select_data
     return entry
+
+
+def _extract_varint_field(tfs: str, field_number: int) -> int | None:
+    data = urlsafe_b64decode(tfs + "=" * (-len(tfs) % 4))
+    idx = 0
+    while idx < len(data):
+        key = data[idx]
+        idx += 1
+        wire_type = key & 0b111
+        current_field = key >> 3
+        if wire_type == 0:
+            shift = 0
+            value = 0
+            while True:
+                byte = data[idx]
+                idx += 1
+                value |= (byte & 0x7F) << shift
+                if byte < 0x80:
+                    break
+                shift += 7
+            if current_field == field_number:
+                return value
+        elif wire_type == 2:
+            shift = 0
+            length = 0
+            while True:
+                byte = data[idx]
+                idx += 1
+                length |= (byte & 0x7F) << shift
+                if byte < 0x80:
+                    break
+                shift += 7
+            idx += length
+        else:
+            raise AssertionError(f"Unsupported wire type in test helper: {wire_type}")
+    return None
 
 
 class ShoppingParserRegressionTests(unittest.TestCase):
@@ -199,6 +237,38 @@ class ShoppingParserRegressionTests(unittest.TestCase):
             build_booking_url(query, selected_legs),
             "https://www.google.com/travel/flights/booking?tfs=CBwQAhphEgoyMDI2LTA1LTAzIh8KA0xIUhIKMjAyNi0wNS0wMxoDUFZHKgJNVTIDNTUyIiAKA1BWRxIKMjAyNi0wNS0wNRoDVFBFKgJNVTIENTAwN2oHCAESA0xIUnIHCAESA1RQRRphEgoyMDI2LTA1LTE3IiAKA1RQRRIKMjAyNi0wNS0xNxoDUFZHKgJNVTIENTAwOCIfCgNQVkcSCjIwMjYtMDUtMTgaA0xIUioCTVUyAzU1MWoHCAESA1RQRXIHCAESA0xIUkABSAFwAYIBCwj___________8BmAEB&hl=en&curr=GBP",
         )
+
+    def test_build_booking_tfs_preserves_multi_city_trip_type(self):
+        query = create_query(
+            flights=[
+                FlightQuery(date="2026-06-08", from_airport="BKK", to_airport="TPE"),
+                FlightQuery(date="2026-07-04", from_airport="TPE", to_airport="LHR"),
+                FlightQuery(date="2026-07-31", from_airport="LHR", to_airport="TPE"),
+                FlightQuery(date="2026-08-04", from_airport="TPE", to_airport="BKK"),
+            ],
+            trip="multi-city",
+            seat="economy",
+            passengers=Passengers(adults=1),
+            language="en",
+            currency="GBP",
+        )
+        selected_legs = (
+            (SelectedSegment("BKK", "2026-06-08", "TPE", "CI", "838"),),
+            (SelectedSegment("TPE", "2026-07-04", "LHR", "CI", "81"),),
+            (SelectedSegment("LHR", "2026-07-31", "TPE", "CI", "82"),),
+            (SelectedSegment("TPE", "2026-08-04", "BKK", "CI", "833"),),
+        )
+
+        tfs = build_booking_tfs(query, selected_legs)
+        self.assertIsNotNone(tfs)
+        self.assertEqual(_extract_varint_field(tfs, 2), 3)
+
+        booking_url = build_booking_url(query, selected_legs)
+        self.assertIsNotNone(booking_url)
+        parsed = urlparse(booking_url)
+        params = parse_qs(parsed.query)
+        self.assertEqual(parsed.path, "/travel/flights/booking")
+        self.assertEqual(_extract_varint_field(params["tfs"][0], 2), 3)
 
 
 if __name__ == "__main__":
