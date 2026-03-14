@@ -1,6 +1,7 @@
 import json
 import unittest
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from fast_flights import (
     BrowserCapture,
@@ -355,6 +356,12 @@ class SearchSessionTests(unittest.TestCase):
         self.assertEqual(session.selection_tokens, ("tok-1", "tok-2", "tok-3"))
         self.assertIsNotNone(session.final_booking_tfs)
         self.assertIn("/travel/flights/booking?tfs=", session.booking_url())
+        selected_search = session.selected_search_url()
+        parsed = urlparse(selected_search)
+        params = parse_qs(parsed.query)
+        self.assertEqual(parsed.path, "/travel/flights")
+        self.assertEqual(params["tfs"][0], build_booking_tfs(query, session.selected_legs))
+        self.assertNotIn("tfu", params)
 
     def test_browser_fallback_uses_provider_only_when_results_need_it(self):
         query = create_query(

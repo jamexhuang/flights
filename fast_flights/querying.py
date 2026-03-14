@@ -383,23 +383,26 @@ def _selected_tfs_max_stops(base: Query) -> int:
 
 
 def _booking_trip_code(query: Query) -> int:
-    """Map query trip type to the selected-itinerary booking payload code."""
-    if query.trip == Trip.MULTI_CITY:
-        return 3
+    """Map query trip type to the selected-itinerary booking payload code.
+
+    Google's booking ``tfs`` field 2 uses a separate code from the trip type
+    in field 19.  Multi-city uses the same F2 value (2) as round-trip.
+    """
     if query.trip == Trip.ONE_WAY:
         return 1
     return 2
 
 
 def build_booking_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, ...], ...]) -> str | None:
-    if not query._flights:
+    flights_list = getattr(query, "flights", getattr(query, "_flights", None))
+    if not flights_list:
         return None
     if not selected_legs:
         return None
 
     payload = b"".join(
         (
-            _encode_field_varint(1, 28),
+            _encode_field_varint(1, 2 if getattr(query, "trip", None) == 3 else 28),
             _encode_field_varint(2, _booking_trip_code(query)),
             *(
                 _encode_len(
@@ -409,13 +412,13 @@ def build_booking_tfs(query: Query, selected_legs: tuple[tuple[SelectedSegment, 
                         selected_legs[idx] if idx < len(selected_legs) else (),
                     ),
                 )
-                for idx, flight in enumerate(query._flights)
+                for idx, flight in enumerate(flights_list)
             ),
             _encode_field_varint(8, 1),
             _encode_field_varint(9, 1),
             _encode_field_varint(14, 1),
             _encode_len(16, _encode_field_varint(1, _selected_tfs_max_stops(query))),
-            _encode_field_varint(19, 1),
+            _encode_field_varint(19, query.trip),
         )
     )
     return b64encode(payload, altchars=b"-_").decode("utf-8").rstrip("=")
@@ -444,18 +447,67 @@ def build_booking_url(
     *,
     language: str | None = None,
     currency: str | None = None,
+    tfu: str | None = None,
 ) -> str | None:
     booking_tfs = build_booking_tfs(query, selected_legs)
     if not booking_tfs:
         return None
+    params: dict[str, str] = {
+        "tfs": booking_tfs,
+        "hl": query.language if language is None else language,
+        "curr": query.currency if currency is None else currency,
+    }
+    if tfu:
+        params["tfu"] = tfu
+    return f"https://www.google.com/travel/flights/booking?{urlencode(params)}"
+
+
+def build_selected_search_url(
+    query_or_return_query: Query | ReturnQuery,
+    *,
+    language: str | None = None,
+    currency: str | None = None,
+) -> str:
+    """Build a Google Flights URL that preserves the available selected-flight context.
+
+    This is primarily useful for multi-city sessions where Google may reject a
+    portable finalized booking payload but will still open the matching search
+    page when given the selected-session ``tfs``. Round-trip selectors continue
+    to carry ``tfu`` so Google can open the selected return flow.
+    """
+    if isinstance(query_or_return_query, ReturnQuery):
+        tfs = _effective_return_tfs(
+            query_or_return_query.base,
+            query_or_return_query.selected_legs,
+            query_or_return_query.selected_tfs,
+        ) or query_or_return_query.base.to_str()
+        if query_or_return_query.base.trip == Trip.MULTI_CITY:
+            params = urlencode(
+                {
+                    "tfs": tfs,
+                    "hl": query_or_return_query.base.language if language is None else language,
+                    "curr": query_or_return_query.base.currency if currency is None else currency,
+                }
+            )
+            return f"https://www.google.com/travel/flights?{params}"
+        params = urlencode(
+            {
+                "tfs": tfs,
+                "hl": query_or_return_query.base.language if language is None else language,
+                "curr": query_or_return_query.base.currency if currency is None else currency,
+                "tfu": query_or_return_query.tfu,
+            }
+        )
+        return f"https://www.google.com/travel/flights?{params}"
+
     params = urlencode(
         {
-            "tfs": booking_tfs,
-            "hl": query.language if language is None else language,
-            "curr": query.currency if currency is None else currency,
+            "tfs": query_or_return_query.to_str(),
+            "hl": query_or_return_query.language if language is None else language,
+            "curr": query_or_return_query.currency if currency is None else currency,
         }
     )
-    return f"https://www.google.com/travel/flights/booking?{params}"
+    return f"https://www.google.com/travel/flights?{params}"
 
 
 def _extract_selected_leg(flight: "Flights") -> tuple[SelectedSegment, ...]:

@@ -23,6 +23,7 @@ from .querying import (
     ReturnQuery,
     build_booking_tfs,
     build_booking_url,
+    build_selected_search_url,
     select_flight,
 )
 from .shopping_options import ShoppingOptions
@@ -108,7 +109,13 @@ class SearchSession:
     def booking_url(self) -> str | None:
         if not self.is_complete:
             return None
-        return build_booking_url(self.query, self.selected_legs)
+        tfu = self.return_query.tfu if self.return_query is not None else None
+        return build_booking_url(self.query, self.selected_legs, tfu=tfu)
+
+    def selected_search_url(self) -> str:
+        if self.return_query is not None:
+            return build_selected_search_url(self.return_query)
+        return build_selected_search_url(self.query)
 
     def results(self) -> MetaList:
         if self.is_complete:
