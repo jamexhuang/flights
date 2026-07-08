@@ -85,5 +85,25 @@ class GetFlightsDiagnosticsPreservedTest(unittest.TestCase):
         self.assertEqual(result.diagnostics.status, "blocked")  # NOT discarded
 
 
+class HtmlPathDiagnosticsTest(unittest.TestCase):
+    def test_html_ok_and_empty(self):
+        q = create_query(
+            flights=[FlightQuery(date="2026-03-15", from_airport="TPE", to_airport="NRT")],
+            trip="one-way",
+        )
+        non_empty = MetaList([object()])  # 1 pseudo-flight
+        with patch("fast_flights.fetcher.fetch_flights_html", return_value="<html>"), \
+             patch("fast_flights.fetcher.parse", return_value=non_empty):
+            r = get_flights(q)
+        self.assertEqual(r.diagnostics.status, "ok")
+        self.assertIsNotNone(r.diagnostics.elapsed_ms)
+
+        empty = MetaList()
+        with patch("fast_flights.fetcher.fetch_flights_html", return_value="<html>"), \
+             patch("fast_flights.fetcher.parse", return_value=empty):
+            r = get_flights(q)
+        self.assertEqual(r.diagnostics.status, "empty")
+
+
 if __name__ == "__main__":
     unittest.main()

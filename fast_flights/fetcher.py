@@ -118,8 +118,17 @@ def get_flights(
         # return empty list if none to maintain compatibility
         return flights_found if flights_found is not None else MetaList()
 
+    from time import perf_counter as _pc
+    from .model import ResponseDiagnostics
+    _t0 = _pc()
     html = fetch_flights_html(q, proxy=proxy, integration=integration)
-    return parse(html)
+    result = parse(html)
+    result.diagnostics = ResponseDiagnostics(
+        status="ok" if len(result) > 0 else "empty",
+        http_status=200,
+        elapsed_ms=round((_pc() - _t0) * 1000, 1),
+    )
+    return result
 
 
 def get_return_flights(
