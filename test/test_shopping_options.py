@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from fast_flights import FlightQuery, Passengers, ShoppingOptions, create_query, get_flights
 from fast_flights.querying import SelectedSegment
+from fast_flights.parser import MetaList
 from fast_flights.shopping import _encode_shopping_request
 
 
@@ -93,7 +94,7 @@ class ShoppingOptionsTests(unittest.TestCase):
             language="en",
             currency="GBP",
         )
-        sentinel = object()
+        sentinel = MetaList()
 
         with patch("fast_flights.fetcher.fetch_flights_html", return_value="<html></html>") as html_mock:
             with patch("fast_flights.fetcher.parse", return_value=sentinel) as parse_mock:
