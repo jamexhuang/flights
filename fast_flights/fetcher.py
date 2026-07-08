@@ -116,7 +116,7 @@ def get_flights(
             passenger_counts=(p.adults, p.children, p.infants_in_seat, p.infants_on_lap),
         )
         # return empty list if none to maintain compatibility
-        return flights_found if flights_found else MetaList()
+        return flights_found if flights_found is not None else MetaList()
 
     html = fetch_flights_html(q, proxy=proxy, integration=integration)
     return parse(html)

@@ -8,6 +8,7 @@ from primp import Client
 from .querying import FlightQuery, SelectedSegment
 from .parser import MetaList, parse_payload
 from .shopping_options import ShoppingOptions
+from .model import ResponseDiagnostics
 
 DEFAULT_RPC_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -191,10 +192,12 @@ def fetch_shopping_results(
     f_sid: str | None = None,
     bl: str | None = None,
     referer: str = "https://www.google.com/travel/flights",
-) -> tuple[list[str], int | None, str, 'MetaList | None']:
+) -> tuple[list[str], int | None, str, 'MetaList']:
     """
     Submits a multicity booking selection request to GetShoppingResults.
-    Returns: (list of available selection tokens, price_if_found, raw_response_text, flights_if_found)
+    Returns: (list of available selection tokens, price_if_found, raw_response_text, flights_found)
+    ``flights_found`` is always a MetaList (empty or populated), carrying a
+    ``.diagnostics`` (ResponseDiagnostics) describing the outcome of the call.
 
     Retries up to ``max_retries`` times when the request times out or flight
     parsing returns no results (Google occasionally returns a session-init
@@ -228,12 +231,24 @@ def fetch_shopping_results(
     ).encode("utf-8")
     tokens_found: list[str] = []
     content = ""
-    flights_found = None
+    flights_found: "MetaList | None" = None
+    used_defaults = f_sid is None and bl is None
+    http_status: int | None = None
+    attempts_made = 0
+
+    def _empty(status: str) -> MetaList:
+        m = MetaList()
+        m.diagnostics = ResponseDiagnostics(
+            status=status, http_status=http_status,
+            attempts=attempts_made, used_default_rpc_params=used_defaults,
+        )
+        return m
 
     for attempt in range(1 + max_retries):
         if attempt > 0:
             # Progressive backoff: 2s, 3s, 4.5s, ...
             _time.sleep(2.0 * (1.5 ** (attempt - 1)))
+        attempts_made = attempt + 1
 
         try:
             res = client.post(url, headers=headers, content=body)
@@ -242,16 +257,22 @@ def fetch_shopping_results(
                 raise
             continue
 
+        http_status = res.status_code
         if res.status_code != 200:
-            return [], None, "", None
+            status = "blocked" if res.status_code in (403, 429) else "http_error"
+            return [], None, "", _empty(status)
 
         content = res.text
         tokens_found = _extract_flight_tokens(content)
         flights_found = _extract_full_flights_list(content, shopping=shopping, source="rpc")
 
         if flights_found is not None and len(flights_found) > 0:
+            flights_found.diagnostics = ResponseDiagnostics(
+                status="ok", http_status=200,
+                attempts=attempts_made, used_default_rpc_params=used_defaults,
+            )
             price_found = flights_found[0].price
             return tokens_found, price_found, content, flights_found
 
-    # All attempts exhausted — return whatever we have (tokens still useful for chaining)
-    return tokens_found, None, content, flights_found
+    # Exhausted with 200s but no results → empty (soft-block-shaped)
+    return tokens_found, None, content, _empty("empty")
