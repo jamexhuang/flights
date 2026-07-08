@@ -676,6 +676,7 @@ def get_flights_multicity_chained(
     language: str = "en-US",
     currency: str = "USD",
     seat: str = "economy",
+    passengers: "Passengers | None" = None,
     proxy: str | None = None,
     delay: float = 1.0,
 ) -> list[MulticityLegChained]:
@@ -696,6 +697,11 @@ def get_flights_multicity_chained(
     if len(flights) < 2:
         raise ValueError("Multi-city chaining requires at least 2 flight legs")
 
+    from .querying import Passengers as _P
+    if passengers is None:
+        passengers = _P(adults=1)
+    _pc = (passengers.adults, passengers.children, passengers.infants_in_seat, passengers.infants_on_lap)
+
     client = _build_default_client(proxy=proxy)
 
     tokens, price, _, _ = fetch_shopping_results(
@@ -705,11 +711,13 @@ def get_flights_multicity_chained(
         language=language,
         currency=currency,
         seat=seat,
+        passenger_counts=_pc,
     )
 
     directional_legs = get_flights_multicity(
         flights,
         seat=seat,
+        passengers=passengers,
         language=language,
         currency=currency,
         proxy=proxy,

@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from fast_flights import FlightQuery, Passengers, create_query
 from fast_flights.fetcher import (
@@ -93,6 +93,7 @@ class SeatRegressionTests(unittest.TestCase):
                 selected_legs=None,
                 referer=None,
                 max_retries=2,
+                passenger_counts=(1, 0, 0, 0),
             ):
                 self.assertEqual(seat, expected_seat)
                 self.assertEqual(len(legs), len(self.multi_city))
@@ -118,6 +119,7 @@ class SeatRegressionTests(unittest.TestCase):
                 per_leg.assert_called_once_with(
                     self.multi_city,
                     seat=seat,
+                    passengers=ANY,
                     language="en-US",
                     currency="USD",
                     proxy=None,

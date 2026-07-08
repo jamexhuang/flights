@@ -90,5 +90,26 @@ class ReturnFlightsPassengerThreadingTest(unittest.TestCase):
         self.assertEqual(captured["pc"], (1, 2, 0, 0))
 
 
+class MulticityChainedPassengerTest(unittest.TestCase):
+    def test_chained_passes_passenger_counts_to_shopping(self):
+        legs = [
+            FlightQuery(date="2026-03-15", from_airport="TPE", to_airport="NRT"),
+            FlightQuery(date="2026-03-20", from_airport="NRT", to_airport="SIN"),
+        ]
+        captured = {}
+
+        def fake_fetch(*args, **kwargs):
+            captured["pc"] = kwargs.get("passenger_counts")
+            return [], None, "", None
+
+        from fast_flights import get_flights_multicity_chained
+        with patch("fast_flights.fetcher.fetch_shopping_results", side_effect=fake_fetch), \
+             patch("fast_flights.fetcher._build_default_client", return_value=object()), \
+             patch("fast_flights.fetcher.get_flights_multicity", return_value=[]):
+            get_flights_multicity_chained(legs, passengers=Passengers(adults=3))
+
+        self.assertEqual(captured["pc"], (3, 0, 0, 0))
+
+
 if __name__ == "__main__":
     unittest.main()
