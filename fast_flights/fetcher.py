@@ -166,6 +166,7 @@ def get_return_flights(
         if not q.base._flights:
             raise ValueError("ReturnQuery base query is missing flight models.")
         client = _build_default_client(proxy=proxy)
+        p = _query_passengers(q.base)
         _, _, _, flights_found = fetch_shopping_results(
             client=client,
             legs=q.base._flights,
@@ -175,6 +176,7 @@ def get_return_flights(
             language=q.base.language if q.base.language else "en-US",
             currency=q.base.currency if q.base.currency else "USD",
             seat=_query_seat_name(q.base),
+            passenger_counts=(p.adults, p.children, p.infants_in_seat, p.infants_on_lap),
             referer=q.url(),
         )
         if flights_found and _results_match_leg(flights_found, expected_leg):

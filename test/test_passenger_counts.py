@@ -46,5 +46,49 @@ class GetFlightsPassengerThreadingTest(unittest.TestCase):
         self.assertEqual(captured["pc"], (2, 1, 0, 0))
 
 
+class ReturnFlightsPassengerThreadingTest(unittest.TestCase):
+    def test_return_flights_passes_passenger_counts(self):
+        from fast_flights.model import CarbonEmission, Flights
+        from fast_flights.querying import select_flight
+        from fast_flights.shopping_options import ShoppingOptions
+
+        base = create_query(
+            flights=[
+                FlightQuery(date="2026-03-15", from_airport="TPE", to_airport="NRT"),
+                FlightQuery(date="2026-03-22", from_airport="NRT", to_airport="TPE"),
+            ],
+            trip="round-trip",
+            passengers=Passengers(adults=1, children=2),
+        )
+        # Minimal stub Flights result with a select_token, enough for
+        # select_flight() to build a ReturnQuery without needing real
+        # segment data.
+        outbound = Flights(
+            type="",
+            price=0,
+            airlines=[],
+            flights=[],
+            carbon=CarbonEmission(typical_on_route=0, emission=0),
+            select_token="tok",
+        )
+        rq = select_flight(base, outbound)
+        captured = {}
+
+        def fake_fetch(*args, **kwargs):
+            captured["pc"] = kwargs.get("passenger_counts")
+            return [], None, "", None
+
+        with patch("fast_flights.fetcher.fetch_shopping_results", side_effect=fake_fetch), \
+             patch("fast_flights.fetcher._build_default_client", return_value=object()), \
+             patch("fast_flights.fetcher._get_expected_return_leg", return_value=object()):
+            try:
+                from fast_flights import get_return_flights
+                get_return_flights(rq, shopping=ShoppingOptions())
+            except ValueError:
+                pass  # _results_match_leg fails on the stub; we only assert the kwarg
+
+        self.assertEqual(captured["pc"], (1, 2, 0, 0))
+
+
 if __name__ == "__main__":
     unittest.main()
