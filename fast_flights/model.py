@@ -69,6 +69,16 @@ class ShoppingMetadata:
 
 
 @dataclass
+class ResponseDiagnostics:
+    """Per-call upstream diagnostics attached to a returned MetaList."""
+    status: Literal["ok", "empty", "http_error", "blocked"]
+    http_status: int | None = None
+    elapsed_ms: float | None = None
+    attempts: int = 1
+    used_default_rpc_params: bool = False
+
+
+@dataclass
 class Flights:
     type: str | Literal["multi"]
     price: int

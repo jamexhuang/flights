@@ -19,12 +19,14 @@ from .shopping_options import SHOPPING_ID_TO_RANKING
 
 if TYPE_CHECKING:
     from .shopping_options import ShoppingOptions
+    from .model import ResponseDiagnostics
 
 
 class MetaList(list[Flights]):
     """Searched flights list, with metadata attached."""
 
     metadata: JsMetadata
+    diagnostics: "ResponseDiagnostics | None" = None
 
 
 def _parse_metadata(payload: list) -> tuple[JsMetadata, dict[str, str]]:

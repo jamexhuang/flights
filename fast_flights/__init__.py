@@ -1,4 +1,5 @@
 from . import integrations
+from .model import ResponseDiagnostics
 from .browser import (
     BrowserArtifacts,
     BrowserCapture,
@@ -34,6 +35,7 @@ from .shopping_options import ShoppingOptions
 from .session import SearchSession
 
 __all__ = [
+    "ResponseDiagnostics",
     "BrowserArtifacts",
     "BrowserCapture",
     "BrowserProvider",
