@@ -56,6 +56,14 @@ class ShoppingDiagnosticsTest(unittest.TestCase):
         self.assertEqual(flights.diagnostics.http_status, 200)
 
 
+class ElapsedMsTest(ShoppingDiagnosticsTest):
+    def test_elapsed_ms_populated_on_blocked(self):
+        client = self._client(_resp(403))
+        *_, flights = fetch_shopping_results(client, self._legs(), tokens=[], max_retries=0)
+        self.assertIsNotNone(flights.diagnostics.elapsed_ms)
+        self.assertGreaterEqual(flights.diagnostics.elapsed_ms, 0.0)
+
+
 from fast_flights import get_flights
 from fast_flights.shopping_options import ShoppingOptions
 from fast_flights.querying import create_query

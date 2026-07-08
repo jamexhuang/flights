@@ -208,6 +208,8 @@ def fetch_shopping_results(
     serving RPC data (especially for premium cabin classes).
     """
     import time as _time
+    from time import perf_counter as _pc
+    _t0 = _pc()
     _lang_code = language if language else "en-US"
     _curr_code = currency if currency else "USD"
     url = _shopping_rpc_url(language=_lang_code, currency=_curr_code, f_sid=f_sid, bl=bl)
@@ -240,6 +242,7 @@ def fetch_shopping_results(
         m = MetaList()
         m.diagnostics = ResponseDiagnostics(
             status=status, http_status=http_status,
+            elapsed_ms=round((_pc() - _t0) * 1000, 1),
             attempts=attempts_made, used_default_rpc_params=used_defaults,
         )
         return m
@@ -269,6 +272,7 @@ def fetch_shopping_results(
         if flights_found is not None and len(flights_found) > 0:
             flights_found.diagnostics = ResponseDiagnostics(
                 status="ok", http_status=200,
+                elapsed_ms=round((_pc() - _t0) * 1000, 1),
                 attempts=attempts_made, used_default_rpc_params=used_defaults,
             )
             price_found = flights_found[0].price
