@@ -1,5 +1,9 @@
+import logging as _logging
+
 from . import integrations
 from .model import ResponseDiagnostics
+
+_logging.getLogger("fast_flights").addHandler(_logging.NullHandler())
 from .browser import (
     BrowserArtifacts,
     BrowserCapture,

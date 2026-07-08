@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import urllib.parse
 from typing import TYPE_CHECKING
@@ -9,6 +10,8 @@ from .querying import FlightQuery, SelectedSegment
 from .parser import MetaList, parse_payload
 from .shopping_options import ShoppingOptions
 from .model import ResponseDiagnostics
+
+logger = logging.getLogger("fast_flights")
 
 DEFAULT_RPC_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -130,6 +133,7 @@ def _extract_full_flights_list(
         payload = json.loads(outer[0][2])
         return parse_payload(payload, include_top_results=True, shopping=shopping, source=source)
     except Exception:
+        logger.debug("shopping: extract_full_flights_list failed", exc_info=True)
         return None
 
 
@@ -176,7 +180,7 @@ def _warmup_shopping_session(client: Client, *, language: str, cookie_header: st
             },
         )
     except Exception:
-        pass
+        logger.debug("shopping: warmup GET failed", exc_info=True)
 
 def fetch_shopping_results(
     client: Client,
@@ -256,6 +260,7 @@ def fetch_shopping_results(
         try:
             res = client.post(url, headers=headers, content=body)
         except Exception:
+            logger.debug("shopping: RPC POST attempt failed", exc_info=True)
             if attempt >= max_retries:
                 raise
             continue

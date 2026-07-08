@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import overload, TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from .parser import MetaList, parse
 from .querying import Query, ReturnQuery, build_booking_tfs
 from .shopping_options import ShoppingOptions
 from .shopping import fetch_shopping_results
+
+logger = logging.getLogger("fast_flights")
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -215,6 +218,7 @@ def _get_selected_html_results(
     try:
         parsed = parse(fetch_flights_html(q, proxy=proxy, integration=integration))
     except Exception:
+        logger.debug("fetcher: selected html fetch failed", exc_info=True)
         return None
 
     if _results_match_leg(parsed, expected_leg):
@@ -259,6 +263,7 @@ def _get_bundled_leg_results(
             return None
         flights_found = parse(res.text)
     except Exception:
+        logger.debug("fetcher: bundled leg fetch failed", exc_info=True)
         return None
 
     if flights_found and _results_match_leg(flights_found, expected_leg):
