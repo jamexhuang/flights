@@ -1,0 +1,27 @@
+name: tests
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -e . pytest
+      - name: Run mocked test suite (excludes live-network scripts)
+        run: |
+          python -m pytest -v \
+            test/test_passenger_counts.py \
+            test/test_diagnostics.py \
+            test/test_logging.py \
+            test/test_search_session.py \
+            test/test_shopping_options.py \
+            test/test_browser_provider.py \
+            test/test_issue_1_regression.py \
+            test/test_seat_regression.py \
+            test/test_selected_page_context.py \
+            test/test_tfs_multi_city.py
