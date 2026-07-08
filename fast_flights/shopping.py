@@ -23,6 +23,7 @@ def _encode_shopping_request(
     seat_val: int = 1,
     shopping: ShoppingOptions | None = None,
     selected_legs: tuple[tuple[SelectedSegment, ...], ...] | None = None,
+    passenger_counts: tuple[int, int, int, int] = (1, 0, 0, 0),
 ) -> str:
     exact_selection = bool(selected_legs and any(selected_legs))
     flights_array = []
@@ -69,7 +70,7 @@ def _encode_shopping_request(
 
     inner_json = [
         tokens_arr,
-        [None, None, 3, None, [], seat_val, [1, 0, 0, 0], None, None, None, None, None, None, flights_array, None, None, None, 1],
+        [None, None, 3, None, [], seat_val, list(passenger_counts), None, None, None, None, None, None, flights_array, None, None, None, 1],
         shopping.sort_id, 0, 0, shopping.ranking_id
     ]
     
@@ -185,6 +186,7 @@ def fetch_shopping_results(
     language: str = "en-US",
     currency: str = "USD",
     seat: str = "economy",
+    passenger_counts: tuple[int, int, int, int] = (1, 0, 0, 0),
     max_retries: int = 3,
     f_sid: str | None = None,
     bl: str | None = None,
@@ -222,6 +224,7 @@ def fetch_shopping_results(
         seat_val,
         shopping=shopping,
         selected_legs=selected_legs,
+        passenger_counts=passenger_counts,
     ).encode("utf-8")
     tokens_found: list[str] = []
     content = ""
