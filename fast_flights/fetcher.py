@@ -104,6 +104,7 @@ def get_flights(
                 seat_str = name
                 break
 
+        p = _query_passengers(q)
         _, _, _, flights_found = fetch_shopping_results(
             client=client,
             legs=q._flights,
@@ -112,6 +113,7 @@ def get_flights(
             language=q.language if q.language else "en-US",
             currency=q.currency if q.currency else "USD",
             seat=seat_str,
+            passenger_counts=(p.adults, p.children, p.infants_in_seat, p.infants_on_lap),
         )
         # return empty list if none to maintain compatibility
         return flights_found if flights_found else MetaList()

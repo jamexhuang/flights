@@ -53,6 +53,7 @@ class SeatRegressionTests(unittest.TestCase):
                 selected_legs=None,
                 referer=None,
                 max_retries=2,
+                passenger_counts=(1, 0, 0, 0),
             ):
                 self.assertEqual(seat, expected_seat)
                 self.assertEqual(len(legs), len(self.multi_city))
